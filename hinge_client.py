@@ -26,10 +26,14 @@ import websockets
 from config import Settings, get_settings
 from hinge_error import HingeAuthError
 from hinge_models import (
+    AnswerContentPayload,
     HingeAuthToken,
+    LikeLimit,
     PhotoContent,
     ProfileContent,
     RecommendationsResponse,
+    SelfContentResponse,
+    SelfProfileResponse,
     SendbirdAuthToken,
     UserProfile,
 )
@@ -344,6 +348,94 @@ class HingeClient:
         response.raise_for_status()
         return RecommendationsResponse.model_validate(response.json())
 
+    async def get_self_profile(self) -> SelfProfileResponse:
+        """Fetch the authenticated user's own profile data.
+
+        Returns:
+            SelfProfileResponse: The response containing the user's profile data.
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
+
+        """
+        log.info("Fetching self profile data", identity_id=self.identity_id)
+        response = await self.client.get(
+            "/user/v3", headers=self._get_default_headers()
+        )
+        response.raise_for_status()
+        return SelfProfileResponse.model_validate(response.json())
+
+    async def get_self_content(self) -> SelfContentResponse:
+        """Fetch the authenticated user's own content (photos, answers, etc.).
+
+        Returns:
+            SelfContentResponse: The response containing the user's content data.
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
+
+        """
+        log.info("Fetching self content data", identity_id=self.identity_id)
+        response = await self.client.get(
+            "/content/v2", headers=self._get_default_headers()
+        )
+        response.raise_for_status()
+        return SelfContentResponse.model_validate(response.json())
+
+    async def update_self_profile(
+        self, profile_updates: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Update the authenticated user's profile with new data.
+
+        Args:
+            profile_updates (dict[str, Any]): Dictionary containing the profile fields
+            to update.
+
+        Returns:
+            dict[str, Any]: The API response from the update (usually a confirmation or partial data).
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
+
+        """
+        log.info("Updating authenticated user's profile", updates=profile_updates)
+        # The payload you sent was an array with a single object containing 'profile'
+        # TODO: Write a proper Pydantic model for profile updates
+        payload = [{"profile": profile_updates}]
+        response = await self.client.patch(
+            "/user/v2", json=payload, headers=self._get_default_headers()
+        )
+        response.raise_for_status()
+        return response.json()  # Returns {"genderId":0} based on request
+
+    async def update_answers(
+        self, answers: list[AnswerContentPayload]
+    ) -> dict[str, Any]:
+        """Update the authenticated user's prompt answers.
+
+        Args:
+            answers (list[AnswerContentPayload]): List of answers to update.
+
+        Returns:
+            dict[str, Any]: The API response from the update (usually empty for 202).
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
+
+        """
+        log.info(
+            "Updating authenticated user's prompt answers",
+            answers=[ans.model_dump(exclude_none=True) for ans in answers],
+        )
+        payload = [
+            answer.model_dump(by_alias=True, exclude_none=True) for answer in answers
+        ]
+        response = await self.client.put(
+            "/content/v1/answers", json=payload, headers=self._get_default_headers()
+        )
+        response.raise_for_status()
+        return response.json()  # Returns {} for 202 accepted
+
     async def get_profiles(self, user_ids: list[str]) -> list[UserProfile]:
         """Fetch the public profile data for a list of user IDs.
 
@@ -360,6 +452,25 @@ class HingeClient:
         )
         response.raise_for_status()
         return [UserProfile.model_validate(user) for user in response.json()]
+
+    async def get_like_limit(self) -> LikeLimit:
+        """Fetch the authenticated user's daily like and superlike limits.
+
+        Returns:
+            LikeLimit: The user's like limits including daily likes and superlikes.
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
+
+        """
+        log.info(
+            "Fetching like limits for authenticated user", identity_id=self.identity_id
+        )
+        response = await self.client.get(
+            "/likelimit", headers=self._get_default_headers()
+        )
+        response.raise_for_status()
+        return LikeLimit.model_validate(response.json())
 
     async def get_profile_content(self, user_ids: list[str]) -> list[ProfileContent]:
         """Fetch the content (photos, prompts, etc.) for a list of user IDs.
@@ -433,7 +544,7 @@ class HingeClient:
         """Send a rating (like/skip/note) for a user.
 
         Args:
-            payload (dict[str, Any]): The payload for te rating request.
+            payload (dict[str, Any]): The payload for the rating request.
 
         Returns:
             dict[str, Any]: The API response, typically the updated like limit.
