@@ -5,7 +5,7 @@ The holy texts. Parsing this much JSON without Pydantic is a war crime.
 
 from datetime import datetime
 from enum import Enum, IntEnum
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -19,65 +19,92 @@ class BaseHingeModel(BaseModel):
     )
 
 
+def add_base_preferences(cls):
+    """Add common preferences via decorator and a _missing_ method to an Enum."""
+    # Add common members to the enum's namespace
+    cls.UNKNOWN = 99999999
+    cls.OPEN_TO_ALL = -1
+    cls.PREFER_NOT_TO_SAY = 0
+
+    # Define the _missing_ method
+    def _missing_(value):
+        """Handle missing values gracefully."""
+        if value is None:
+            return cls.UNKNOWN
+        print(
+            f"⚠️ Warning: Invalid value '{value}' for {cls.__name__}. "
+            f"Defaulting to UNKNOWN."
+        )
+        return cls.UNKNOWN
+
+    # Add the method to the class, making it a classmethod
+    cls._missing_ = classmethod(_missing_)
+
+    return cls
+
+
+@add_base_preferences
 class ChildrenStatusEnum(IntEnum):
     """Children status codes used in Hinge."""
 
     NO = 1
+    YES = 2
 
 
+@add_base_preferences
 class DatingIntentionEnum(IntEnum):
     """Dating intention codes used in Hinge."""
 
-    PREFER_NOT_TO_SAY = 0
     LIFE_PARTNER = 1
     FIGURING_OUT_GOALS = 6
 
 
+@add_base_preferences
 class DrinkingStatusEnum(IntEnum):
     """Drinking status codes used in Hinge."""
 
-    PREFER_NOT_TO_SAY = 0
     YES = 1
     SOMETIMES = 2
     NO = 3
 
 
+@add_base_preferences
 class DrugStatusEnum(IntEnum):
     """Drug usage status codes used in Hinge."""
 
-    PREFER_NOT_TO_SAY = 0
     YES = 1
     SOMETIMES = 2
     NO = 3
 
 
+@add_base_preferences
 class SmokingStatusEnum(IntEnum):
     """Smoking status codes used in Hinge."""
 
-    PREFER_NOT_TO_SAY = 0
     YES = 1
     SOMETIMES = 2
     NO = 3
 
 
+@add_base_preferences
 class MarijuanaStatusEnum(IntEnum):
     """Marijuana usage status codes used in Hinge."""
 
-    PREFER_NOT_TO_SAY = 0
     YES = 1
     SOMETIMES = 2
     NO = 3
 
 
+@add_base_preferences
 class EducationAttainedEnum(IntEnum):
     """Education levels used in Hinge."""
 
-    PREFER_NOT_TO_SAY = 0
     SECONDARY_SCHOOL = 1
     UNDERGRAD = 2
     POSTGRAD = 3
 
 
+@add_base_preferences
 class ReligionEnum(IntEnum):
     """Religion codes used in Hinge."""
 
@@ -86,10 +113,10 @@ class ReligionEnum(IntEnum):
     MUSLIM = 6
 
 
+@add_base_preferences
 class PoliticsEnum(IntEnum):
     """Political orientation codes used in Hinge."""
 
-    PREFER_NOT_TO_SAY = 0
     LIBERAL = 1
     MODERATE = 2
     CONSERVATIVE = 3
@@ -97,6 +124,7 @@ class PoliticsEnum(IntEnum):
     OTHER = 5
 
 
+@add_base_preferences
 class RelationshipTypeEnum(IntEnum):
     """Relationship type codes used in Hinge."""
 
@@ -105,6 +133,7 @@ class RelationshipTypeEnum(IntEnum):
     FIGURING_OUT = 3
 
 
+@add_base_preferences
 class LanguageEnum(IntEnum):
     """Language codes used in Hinge."""
 
@@ -113,21 +142,12 @@ class LanguageEnum(IntEnum):
     VIETNAMESE = 126
     FRENCH = 32
     SPANISH = 108
-    UNKNOWN = -1
-
-    @classmethod
-    def _missing_(cls, value):
-        """Handle missing values gracefully."""
-        print(
-            f"Warning: Missing LanguageEnum value for {value}. Defaulting to UNKNOWN."
-        )
-        return cls.UNKNOWN
 
 
+@add_base_preferences
 class EthnicitiesEnum(IntEnum):
     """Ethnicity codes used in Hinge."""
 
-    PREFER_NOT_TO_SAY = 0
     NATIVE_AMERICAN = 1
     BLACK_AFRICAN = 2
     EAST_ASIAN = 3
@@ -141,6 +161,8 @@ class EthnicitiesEnum(IntEnum):
 
 
 class QuestionId(str, Enum):
+    """Enum for Hinge question IDs."""
+
     DONT_HATE_ME_IF_I = "5b5799a05b162c2841794201"  # "Don't hate me if I"
     MY_LOVE_LANGUAGE_IS = "5be0789228fd883a24045da0"  # "My Love Language is"
     ID_FALL_FOR_YOU_IF = "5b57992f5b162c284179343a"  # "I'd fall for you if"
@@ -163,6 +185,7 @@ class QuestionId(str, Enum):
 
     @property
     def prompt_text(self) -> str:
+        """Return the prompt text associated with the question ID."""
         return {
             self.DONT_HATE_ME_IF_I: "Don't hate me if I",
             self.MY_LOVE_LANGUAGE_IS: "My Love Language is",
@@ -298,6 +321,107 @@ class SexualOrientation(BaseHingeModel):
 
     value: list[int] | None = None  # TODO: Define proper enum
     visible: bool
+
+
+class RangeDetails(BaseHingeModel):
+    """Wrapper for range details for the /user/v3 endpoint."""
+
+    max: int | None = None
+    min: int | None = None
+
+
+class GenderedRange(BaseHingeModel):
+    """Schema for gender-specific range, e.g. age or height."""
+
+    men: RangeDetails | None = Field(default=None, alias="0")
+    women: RangeDetails | None = Field(default=None, alias="1")
+    non_binary_people: RangeDetails | None = Field(default=None, alias="3")
+
+
+class GenderedDealbreaker(BaseHingeModel):
+    """Schema for gender-specific dealbreakers."""
+
+    men: bool | None = Field(default=None, alias="0")
+    women: bool | None = Field(default=None, alias="1")
+    non_binary_people: bool | None = Field(default=None, alias="3")
+
+
+class GenderPreferences(IntEnum):
+    """Enum for gender preferences in user settings."""
+
+    MEN = 0
+    WOMEN = 1
+    NON_BINARY_PEOPLE = 3
+
+
+class Dealbreakers(BaseHingeModel):
+    """Schema for dealbreaker flags in user preferences."""
+
+    marijuana: bool
+    smoking: bool
+    max_distance: bool
+    drinking: bool
+    education_attained: bool
+    gendered_height: GenderedDealbreaker = Field(..., alias="genderedHeight")
+    politics: bool
+    relationship_types: bool
+    drugs: bool
+    dating_intentions: bool
+    family_plans: bool
+    gendered_age: GenderedDealbreaker = Field(..., alias="genderedAge")
+    religions: bool
+    ethnicities: bool
+    children: bool
+
+
+class Preferences(BaseHingeModel):
+    """Schema to update user preferences (PATCH /preferences/v2/selected)."""
+
+    gendered_age_ranges: GenderedRange = Field(..., alias="genderedAgeRanges")
+    dealbreakers: Dealbreakers
+    religions: list[ReligionEnum]
+    drinking: list[DrinkingStatusEnum]
+    gendered_height_ranges: GenderedRange = Field(..., alias="genderedHeightRanges")
+    marijuana: list[MarijuanaStatusEnum]
+    relationship_types: list[RelationshipTypeEnum]
+    drugs: list[DrugStatusEnum]
+    max_distance: int
+    children: list[ChildrenStatusEnum]
+    ethnicities: list[EthnicitiesEnum]
+    smoking: list[SmokingStatusEnum]
+    education_attained: list[EducationAttainedEnum]
+    family_plans: list[int] | None = [-1]  # TODO: Define proper enum
+    dating_intentions: list[DatingIntentionEnum]
+    politics: list[PoliticsEnum]
+    gender_preferences: list[GenderPreferences] = Field(..., alias="genderPreferences")
+
+    @model_validator(mode="after")
+    def validate_dealbreakers(self) -> "Preferences":
+        """Validate that dealbreakers are not set for 'OPEN_TO_ALL' options."""
+        for field_name, field_value in self.__dict__.items():
+            if isinstance(field_value, list) and all(
+                isinstance(v, IntEnum) for v in field_value
+            ):
+                if 0 in field_value:
+                    raise ValueError(
+                        f"Dealbreaker field '{field_name}' cannot be "
+                        f"'PREFER_NOT_TO_SAY' in Preferences."
+                    )
+
+                if -1 in field_value:
+                    if len(field_value) > 1:
+                        raise ValueError(
+                            f"Dealbreaker field '{field_name}' cannot be "
+                            f"'OPEN_TO_ALL' and have other values at the same time."
+                        )
+
+                    if getattr(self.dealbreakers, field_name):
+                        raise ValueError(
+                            f"Dealbreaker field '{field_name}' cannot be "
+                            f"'OPEN_TO_ALL' and set to True in dealbreakers."
+                        )
+
+        return self
 
 
 class Works(BaseHingeModel):
