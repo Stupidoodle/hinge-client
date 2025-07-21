@@ -6,7 +6,14 @@ The holy texts. Parsing this much JSON without Pydantic is a war crime.
 from __future__ import annotations
 from datetime import datetime, timezone
 from enum import IntEnum
-from pydantic import BaseModel, ConfigDict, Field, model_validator, UUID4
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+    UUID4,
+)
 from pydantic.alias_generators import to_camel
 from typing import Any, Literal, TYPE_CHECKING
 from uuid import uuid4
@@ -46,7 +53,7 @@ class BaseHingeModel(BaseModel):
 class ActiveHingeModel(BaseHingeModel):
     """Base model that can hold a client instance to perform actions."""
 
-    client: HingeClient
+    client: Any
 
 
 class ContentHingeModel(ActiveHingeModel):
@@ -322,6 +329,7 @@ class RecommendationSubject(ActiveHingeModel):
 
     subject_id: str
     rating_token: str
+    origin: str | None = None
 
     async def skip(self) -> dict[str, Any]:
         """Skip this recommendation.
@@ -340,6 +348,7 @@ class RecommendationSubject(ActiveHingeModel):
             rating_token=self.rating_token,
             session_id=self.client.session_id,
             initiated_with=None,
+            origin=self.origin,
         )
 
         response = await self.client.client.post(
@@ -348,6 +357,7 @@ class RecommendationSubject(ActiveHingeModel):
             headers=self.client._get_default_headers(),  # noqa
         )
         response.raise_for_status()
+        self.client.remove_recommendation(self.subject_id)
         return response.json()
 
     async def get_full_content(self) -> ProfileContent:
@@ -512,7 +522,7 @@ class CreateRate(BaseHingeModel):
     initiated_with: str | None = "standard"
     rating: Literal["like", "note", "skip"]
     has_pairing: bool = False  # No clue what this is
-    origin: str = "compatibles"  # Could also be standouts maybe?
+    origin: str | None = "compatibles"  # Could also be standouts maybe?
     subject_id: str
 
 
@@ -551,6 +561,8 @@ class PhotoContent(ContentHingeModel):
             has_comment=comment is not None,
         )
 
+        self.client.remove_recommendation(self.subject.subject_id)
+
         return await self.client.rate_user(
             subject=self.subject,
             content_item=self,
@@ -569,7 +581,14 @@ class Feedback(BaseHingeModel):
 class TranscriptionMetadata(BaseHingeModel):
     """Placeholder for transcription metadata."""
 
-    pass
+    content_id: str
+    position: int | None = None
+    question_id: QuestionId
+    type: Literal["voice", "video"]
+    url: str
+    cdn_id: str
+    waveform: str
+    transcription: str
 
 
 class TextAnswer(BaseHingeModel):
@@ -594,7 +613,7 @@ class AnswerContent(ContentHingeModel):
     position: int | None = None  # Added
     question_id: QuestionId
     type: str | None = None  # Added (e.g., 'text')
-    response: str
+    response: str | None = None  # NOTE: This can be None for voice/video answers
     transcription_metadata: TranscriptionMetadata | None = None  # Added
     feedback: Feedback | None = None  # Added
 
@@ -615,11 +634,20 @@ class AnswerContent(ContentHingeModel):
             has_comment=comment is not None,
         )
 
+        self.client.remove_recommendation(self.subject.subject_id)
+
         return await self.client.rate_user(
             subject=self.subject,
             content_item=self,
             comment=comment,
         )
+
+    @field_validator("transcription_metadata", mode="before")
+    def empty_dict_to_none(cls, v):
+        """Convert empty dict to None for transcription metadata."""
+        if isinstance(v, dict) and not v:
+            return None
+        return v
 
 
 class PromptContent(BaseHingeModel):
@@ -630,11 +658,19 @@ class PromptContent(BaseHingeModel):
     options: list[str]
 
 
+class ProfileContentContent(BaseHingeModel):
+    """Wrapper for the content field in ProfileContent."""
+
+    photos: list[PhotoContent]
+    answers: list[AnswerContent]
+    prompt_poll: PromptContent | None = None
+
+
 class ProfileContent(BaseHingeModel):
     """Schema for a user's full content (photos, answers, etc.)."""
 
     user_id: str
-    content: dict[str, list[PhotoContent | AnswerContent] | PromptContent]
+    content: ProfileContentContent
 
 
 class SelfContentResponse(BaseHingeModel):
