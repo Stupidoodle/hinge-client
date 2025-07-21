@@ -30,6 +30,7 @@ from hinge_models import (
     HingeAuthToken,
     LikeLimit,
     PhotoContent,
+    Preferences,
     ProfileContent,
     RecommendationsResponse,
     SelfContentResponse,
@@ -382,6 +383,51 @@ class HingeClient:
         response.raise_for_status()
         return SelfContentResponse.model_validate(response.json())
 
+    async def get_self_preferences(self) -> Preferences:
+        """Fetch the authenticated user's preferences.
+
+        Returns:
+            Preferences: The user's preferences.
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
+
+        """
+        log.info("Fetching self preferences", identity_id=self.identity_id)
+        response = await self.client.get(
+            "/preference/v2/selected", headers=self._get_default_headers()
+        )
+        response.raise_for_status()
+        return Preferences.model_validate(response.json())
+
+    async def update_self_preferences(self, payload: Preferences) -> dict[str, Any]:
+        """Update the authenticated user's preferences.
+
+        Args:
+            payload (Preferences): The preferences to update.
+
+        Returns:
+            dict[str, Any]: The API response from the update
+            (usually a confirmation or partial data).
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
+
+        """
+        log.info(
+            "Updating user preferences",
+            preferences=payload.model_dump(by_alias=True, exclude_none=True),
+        )
+        # The payload is an array containing a single preferences object
+        _payload = [payload.model_dump(by_alias=True, exclude_none=True)]
+        response = await self.client.patch(
+            "/preference/v2/selected",
+            json=_payload,
+            headers=self._get_default_headers(),
+        )
+        response.raise_for_status()
+        return response.json()  # Returns {"genderPreferenceId":1} or something similar
+
     async def update_self_profile(
         self, profile_updates: dict[str, Any]
     ) -> dict[str, Any]:
@@ -453,6 +499,23 @@ class HingeClient:
         response.raise_for_status()
         return [UserProfile.model_validate(user) for user in response.json()]
 
+    async def get_profile_content(self, user_ids: list[str]) -> list[ProfileContent]:
+        """Fetch the content (photos, prompts, etc.) for a list of user IDs.
+
+        Args:
+            user_ids (list[str]): List of user IDs to fetch content for.
+
+        Returns:
+            list[ProfileContent]: List of profile content objects.
+
+        """
+        params = {"ids": ",".join(user_ids)}
+        response = await self.client.get(
+            "/content/v2/public", params=params, headers=self._get_default_headers()
+        )
+        response.raise_for_status()
+        return [ProfileContent.model_validate(content) for content in response.json()]
+
     async def get_like_limit(self) -> LikeLimit:
         """Fetch the authenticated user's daily like and superlike limits.
 
@@ -471,23 +534,6 @@ class HingeClient:
         )
         response.raise_for_status()
         return LikeLimit.model_validate(response.json())
-
-    async def get_profile_content(self, user_ids: list[str]) -> list[ProfileContent]:
-        """Fetch the content (photos, prompts, etc.) for a list of user IDs.
-
-        Args:
-            user_ids (list[str]): List of user IDs to fetch content for.
-
-        Returns:
-            list[ProfileContent]: List of profile content objects.
-
-        """
-        params = {"ids": ",".join(user_ids)}
-        response = await self.client.get(
-            "/content/v2/public", params=params, headers=self._get_default_headers()
-        )
-        response.raise_for_status()
-        return [ProfileContent.model_validate(content) for content in response.json()]
 
     async def like_photo(
         self, subject_id: str, rating_token: str, photo: PhotoContent
