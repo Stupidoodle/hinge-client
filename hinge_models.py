@@ -519,11 +519,20 @@ class CreateRate(BaseHingeModel):
         .replace("+00:00", "Z")
     )
     rating_token: str
-    initiated_with: str | None = "standard"
+    initiated_with: Literal["like", "superlike"] | None = None
     rating: Literal["like", "note", "skip"]
     has_pairing: bool = False  # No clue what this is
     origin: str | None = "compatibles"  # Could also be standouts maybe?
     subject_id: str
+
+    @field_validator("initiated_with", mode="after")
+    def validate_initiated_with(cls, v):
+        """Ensure initiated_with is set if rating is 'like' or 'superlike'."""
+        if v is None and cls.rating in ["like", "superlike"]:  # noqa
+            raise ValueError(
+                "initiated_with must be set when rating is 'like' or 'superlike'"
+            )
+        return v
 
 
 class PhotoContent(ContentHingeModel):
