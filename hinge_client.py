@@ -12,10 +12,10 @@ For educational and research purposes only.
 Don't be a creep. Use your new powers for good (or at least for science).
 """
 
-from datetime import datetime, timezone
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from typing import Any
+from typing import Any, Literal
+from uuid import UUID
 import asyncio
 import httpx
 import json
@@ -26,12 +26,18 @@ import websockets
 from config import Settings, get_settings
 from hinge_error import HingeAuthError
 from hinge_models import (
+    AnswerContent,
     AnswerContentPayload,
+    CreateRate,
+    CreateRateContent,
+    CreateRateContentPrompt,
     HingeAuthToken,
     LikeLimit,
+    LikeResponse,
     PhotoContent,
     Preferences,
     ProfileContent,
+    RecommendationSubject,
     RecommendationsResponse,
     SelfContentResponse,
     SelfProfileResponse,
@@ -58,6 +64,7 @@ class HingeClient:
     installed: bool
     install_id: str
     phone_number: str
+    recommendations: dict[str, RecommendationSubject]
     sendbird_jwt: str
     session_file: str
     session_id: str
@@ -118,6 +125,8 @@ class HingeClient:
         else:
             log.info("No existing session file found, creating new session")
             self._create_session()
+
+        self._load_recommendations()
 
         self.settings = settings or get_settings()
         self.client = client or httpx.AsyncClient(
@@ -343,11 +352,37 @@ class HingeClient:
             "newHere": False,
             "activeToday": False,
         }
+
         response = await self.client.post(
             "/rec/v2", json=payload, headers=self._get_default_headers()
         )
         response.raise_for_status()
-        return RecommendationsResponse.model_validate(response.json())
+
+        recs_data = response.json()
+        new_recs_count = 0
+
+        if "feeds" in recs_data:
+            for feed in recs_data["feeds"]:
+                feed_origin = feed.get("origin")
+                if "subjects" in feed:
+                    for subject_data in feed["subjects"]:
+                        subject_data["client"] = self
+                        subject_data["origin"] = feed_origin
+
+                        subject_id = subject_data.get("subjectId") or subject_data.get(
+                            "subject_id"
+                        )
+
+                        if subject_id and subject_id not in self.recommendations:
+                            self.recommendations[subject_id] = (
+                                RecommendationSubject.model_validate(subject_data)
+                            )
+                            new_recs_count += 1
+
+        log.info(f"Fetched and stored {new_recs_count} new recommendations.")
+        self._save_recommendations()
+
+        return RecommendationsResponse.model_validate(recs_data)
 
     async def get_self_profile(self) -> SelfProfileResponse:
         """Fetch the authenticated user's own profile data.
@@ -360,10 +395,12 @@ class HingeClient:
 
         """
         log.info("Fetching self profile data", identity_id=self.identity_id)
+
         response = await self.client.get(
             "/user/v3", headers=self._get_default_headers()
         )
         response.raise_for_status()
+
         return SelfProfileResponse.model_validate(response.json())
 
     async def get_self_content(self) -> SelfContentResponse:
@@ -377,10 +414,12 @@ class HingeClient:
 
         """
         log.info("Fetching self content data", identity_id=self.identity_id)
+
         response = await self.client.get(
             "/content/v2", headers=self._get_default_headers()
         )
         response.raise_for_status()
+
         return SelfContentResponse.model_validate(response.json())
 
     async def get_self_preferences(self) -> Preferences:
@@ -394,10 +433,12 @@ class HingeClient:
 
         """
         log.info("Fetching self preferences", identity_id=self.identity_id)
+
         response = await self.client.get(
             "/preference/v2/selected", headers=self._get_default_headers()
         )
         response.raise_for_status()
+
         return Preferences.model_validate(response.json())
 
     async def update_self_preferences(self, payload: Preferences) -> dict[str, Any]:
@@ -418,14 +459,17 @@ class HingeClient:
             "Updating user preferences",
             preferences=payload.model_dump(by_alias=True, exclude_none=True),
         )
+
         # The payload is an array containing a single preferences object
         _payload = [payload.model_dump(by_alias=True, exclude_none=True)]
+
         response = await self.client.patch(
             "/preference/v2/selected",
             json=_payload,
             headers=self._get_default_headers(),
         )
         response.raise_for_status()
+
         return response.json()  # Returns {"genderPreferenceId":1} or something similar
 
     async def update_self_profile(
@@ -448,10 +492,12 @@ class HingeClient:
         # The payload you sent was an array with a single object containing 'profile'
         # TODO: Write a proper Pydantic model for profile updates
         payload = [{"profile": profile_updates}]
+
         response = await self.client.patch(
             "/user/v2", json=payload, headers=self._get_default_headers()
         )
         response.raise_for_status()
+
         return response.json()  # Returns {"genderId":0} based on request
 
     async def update_answers(
@@ -473,13 +519,16 @@ class HingeClient:
             "Updating authenticated user's prompt answers",
             answers=[ans.model_dump(exclude_none=True) for ans in answers],
         )
+
         payload = [
             answer.model_dump(by_alias=True, exclude_none=True) for answer in answers
         ]
+
         response = await self.client.put(
             "/content/v1/answers", json=payload, headers=self._get_default_headers()
         )
         response.raise_for_status()
+
         return response.json()  # Returns {} for 202 accepted
 
     async def get_profiles(self, user_ids: list[str]) -> list[UserProfile]:
@@ -493,10 +542,12 @@ class HingeClient:
 
         """
         params = {"ids": ",".join(user_ids)}
+
         response = await self.client.get(
             "/user/v3/public", params=params, headers=self._get_default_headers()
         )
         response.raise_for_status()
+
         return [UserProfile.model_validate(user) for user in response.json()]
 
     async def get_profile_content(self, user_ids: list[str]) -> list[ProfileContent]:
@@ -510,11 +561,32 @@ class HingeClient:
 
         """
         params = {"ids": ",".join(user_ids)}
+
         response = await self.client.get(
             "/content/v2/public", params=params, headers=self._get_default_headers()
         )
         response.raise_for_status()
-        return [ProfileContent.model_validate(content) for content in response.json()]
+        response_data = response.json()
+
+        for profile in response_data:
+            if "content" not in profile:
+                log.warning(
+                    f"Profile {profile['userId']} has no content, skipping.",
+                    user_id=profile["userId"],
+                )
+                continue
+
+            if "photos" in profile["content"]:
+                for photo in profile["content"]["photos"]:
+                    photo["client"] = self
+                    photo["subject"] = self.recommendations[profile["userId"]]
+
+            if "answers" in profile["content"]:
+                for answer in profile["content"]["answers"]:
+                    answer["client"] = self
+                    answer["subject"] = self.recommendations[profile["userId"]]
+
+        return [ProfileContent.model_validate(content) for content in response_data]
 
     async def get_like_limit(self) -> LikeLimit:
         """Fetch the authenticated user's daily like and superlike limits.
@@ -529,79 +601,107 @@ class HingeClient:
         log.info(
             "Fetching like limits for authenticated user", identity_id=self.identity_id
         )
+
         response = await self.client.get(
             "/likelimit", headers=self._get_default_headers()
         )
         response.raise_for_status()
+
         return LikeLimit.model_validate(response.json())
 
-    async def like_photo(
-        self, subject_id: str, rating_token: str, photo: PhotoContent
-    ) -> dict[str, Any]:
-        """Like a specific photo on a user's profile.
+    async def _run_text_review(self, text: str, receiver_id: str) -> UUID:
+        """Run the pre-flight text moderation check.
 
         Args:
-            subject_id (str): The ID of the user whose photo you want to like.
-            rating_token (str): The rating token for the user.
-            photo (PhotoContent): The photo content object to like.
+            text (str): The text to be checked for moderation.
+            receiver_id (str): The ID of the user who will receive the text.
 
         Returns:
-            dict[str, Any]: The API response, typically the updated like limit.
+            UUID: The hcmRunId from the moderation response.
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails.
 
         """
+        log.info(
+            "Running text review",
+            text=text,
+            receiver_id=receiver_id,
+        )
+
         payload = {
-            "rating": "like",
-            "subjectId": subject_id,
-            "ratingToken": rating_token,
-            "content": {"photo": photo.model_dump(exclude_none=True)},
-            "sessionId": self.session_id,
-            "ratingId": str(uuid.uuid4()).upper(),
-            "created": datetime.now(timezone.utc).isoformat() + "Z",
-            "initiatedWith": "standard",
-            "origin": "compatibles",
-            "hasPairing": False,
+            "text": text,
+            "receiverId": receiver_id,
         }
-        return await self._rate_user(payload)
 
-    async def skip_profile(self, subject_id: str, rating_token: str) -> dict[str, Any]:
-        """Skip a user's profile.
-
-        Args:
-            subject_id (str): The ID of the user whose profile you want to skip.
-            rating_token (str): The rating token for the user.
-
-        Returns:
-            dict[str, Any]: The API response.
-
-        """
-        payload = {
-            "rating": "skip",
-            "subjectId": subject_id,
-            "ratingToken": rating_token,
-            "sessionId": self.session_id,
-            "ratingId": str(uuid.uuid4()).upper(),
-            "created": datetime.now(timezone.utc).isoformat() + "Z",
-            "origin": "compatibles",
-            "hasPairing": False,
-        }
-        return await self._rate_user(payload)
-
-    async def _rate_user(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Send a rating (like/skip/note) for a user.
-
-        Args:
-            payload (dict[str, Any]): The payload for the rating request.
-
-        Returns:
-            dict[str, Any]: The API response, typically the updated like limit.
-
-        """
         response = await self.client.post(
-            "/rate/v2/initiate",
+            "/fag/textreview",
             json=payload,
             headers=self._get_default_headers(),
         )
         response.raise_for_status()
+
+        return response.json()["hcmRunId"]
+
+    async def rate_user(
+        self,
+        subject: RecommendationSubject,
+        content_item: PhotoContent | AnswerContent,
+        comment: str | None = None,
+    ) -> LikeResponse:
+        """
+
+        Args:
+            subject (RecommendationSubject):
+            content_item ():
+            comment ():
+
+        Returns:
+
+        """
+        hcm_run_id = None
+        rating_type: Literal["note", "like"] = "note" if comment else "like"
+
+        if comment:
+            hcm_run_id = await self._run_text_review(
+                text=comment, receiver_id=subject.subject_id
+            )
+
+        if isinstance(content_item, PhotoContent):
+            rate_content = CreateRateContent(photo=content_item, comment=comment)
+        elif isinstance(content_item, AnswerContent):
+            rate_content = CreateRateContent(
+                prompt=CreateRateContentPrompt(
+                    answer=content_item.response,
+                    content_id=content_item.content_id,
+                    question=content_item.question_id.prompt_text,
+                ),
+                comment=comment,
+            )
+        else:
+            raise TypeError("content_item must be PhotoContent or AnswerContent")
+
+        payload = CreateRate(
+            session_id=self.session_id,
+            rating_token=subject.rating_token,
+            subject_id=subject.subject_id,
+            rating=rating_type,
+            hcm_run_id=hcm_run_id,
+            content=rate_content,
+        )
+
+        log.info(
+            "Sending rate request",
+            payload=payload.model_dump(by_alias=True, exclude_none=True),
+        )
+
+        response = await self.client.post(
+            "/rate/v2/initiate",
+            json=payload.model_dump(by_alias=True, exclude_none=True),
+            headers=self._get_default_headers(),
+        )
+        response.raise_for_status()
+
         return response.json()
 
     def _create_session(self) -> None:
@@ -643,6 +743,60 @@ class HingeClient:
             json.dump(session_data, f)
 
         log.info("Session saved successfully")
+
+    def _load_recommendations(self) -> None:
+        """Load recommendations from the session file if available."""
+        self.recommendations = {}
+
+        if not os.path.exists(f"recommendations_{self.session_id}.json"):
+            log.info("No recommendations file found, skipping load")
+            return
+
+        try:
+            with open(f"recommendations_{self.session_id}.json", "r") as f:
+                recs_data = json.load(f)
+
+                for subject_id, subject_data in recs_data.items():
+                    subject_data["client"] = self
+                    self.recommendations[subject_id] = (
+                        RecommendationSubject.model_validate(subject_data)
+                    )
+                log.info(
+                    f"Loaded {len(self.recommendations)} "
+                    f"recommendations from file."
+                )
+        except (json.JSONDecodeError, KeyError) as e:
+            log.error(
+                "Failed to load recommendations file, creating a new one.", exc_info=e
+            )
+            self.recommendations = {}  # Reset on failure
+
+    def _save_recommendations(self) -> None:
+        """Save the current recommendations to a file."""
+        with open(f"recommendations_{self.session_id}.json", "w") as f:
+            # We need to serialize the Pydantic models to dicts for JSON
+            serializable_recs = {
+                subject_id: subject.model_dump(
+                    exclude={"client"}
+                )  # Exclude non-serializable client
+                for subject_id, subject in self.recommendations.items()
+            }
+            json.dump(serializable_recs, f, indent=2)
+        log.info(f"Saved {len(self.recommendations)} recommendations to file.")
+
+    def remove_recommendation(self, subject_id: str) -> None:
+        """Remove a recommendation from the in-memory dict and save the state.
+
+        Args:
+            subject_id (str): The ID of the recommendation to remove.
+
+        """
+        if subject_id in self.recommendations:
+            del self.recommendations[subject_id]
+            self._save_recommendations()
+            log.info(f"Removed recommendation with ID {subject_id} from memory.")
+        else:
+            log.warning(f"Subject ID {subject_id} not found in recommendations.")
 
 
 async def main() -> None:
