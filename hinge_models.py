@@ -4,9 +4,26 @@ The holy texts. Parsing this much JSON without Pydantic is a war crime.
 """
 
 from datetime import datetime
-from enum import Enum, IntEnum
+from enum import IntEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
+
+from hinge_enums import (
+    ChildrenStatusEnum,
+    DatingIntentionEnum,
+    DrinkingStatusEnum,
+    DrugStatusEnum,
+    EducationAttainedEnum,
+    EthnicitiesEnum,
+    GenderPreferences,
+    LanguageEnum,
+    MarijuanaStatusEnum,
+    PoliticsEnum,
+    QuestionId,
+    RelationshipTypeEnum,
+    ReligionEnum,
+    SmokingStatusEnum,
+)
 
 
 class BaseHingeModel(BaseModel):
@@ -17,184 +34,6 @@ class BaseHingeModel(BaseModel):
         extra="ignore",
         populate_by_name=True,
     )
-
-
-def add_base_preferences(cls):
-    """Add common preferences via decorator and a _missing_ method to an Enum."""
-    # Add common members to the enum's namespace
-    cls.UNKNOWN = 99999999
-    cls.OPEN_TO_ALL = -1
-    cls.PREFER_NOT_TO_SAY = 0
-
-    # Define the _missing_ method
-    def _missing_(value):
-        """Handle missing values gracefully."""
-        if value is None:
-            return cls.UNKNOWN
-        print(
-            f"⚠️ Warning: Invalid value '{value}' for {cls.__name__}. "
-            f"Defaulting to UNKNOWN."
-        )
-        return cls.UNKNOWN
-
-    # Add the method to the class, making it a classmethod
-    cls._missing_ = classmethod(_missing_)
-
-    return cls
-
-
-@add_base_preferences
-class ChildrenStatusEnum(IntEnum):
-    """Children status codes used in Hinge."""
-
-    NO = 1
-    YES = 2
-
-
-@add_base_preferences
-class DatingIntentionEnum(IntEnum):
-    """Dating intention codes used in Hinge."""
-
-    LIFE_PARTNER = 1
-    FIGURING_OUT_GOALS = 6
-
-
-@add_base_preferences
-class DrinkingStatusEnum(IntEnum):
-    """Drinking status codes used in Hinge."""
-
-    YES = 1
-    SOMETIMES = 2
-    NO = 3
-
-
-@add_base_preferences
-class DrugStatusEnum(IntEnum):
-    """Drug usage status codes used in Hinge."""
-
-    YES = 1
-    SOMETIMES = 2
-    NO = 3
-
-
-@add_base_preferences
-class SmokingStatusEnum(IntEnum):
-    """Smoking status codes used in Hinge."""
-
-    YES = 1
-    SOMETIMES = 2
-    NO = 3
-
-
-@add_base_preferences
-class MarijuanaStatusEnum(IntEnum):
-    """Marijuana usage status codes used in Hinge."""
-
-    YES = 1
-    SOMETIMES = 2
-    NO = 3
-
-
-@add_base_preferences
-class EducationAttainedEnum(IntEnum):
-    """Education levels used in Hinge."""
-
-    SECONDARY_SCHOOL = 1
-    UNDERGRAD = 2
-    POSTGRAD = 3
-
-
-@add_base_preferences
-class ReligionEnum(IntEnum):
-    """Religion codes used in Hinge."""
-
-    CATHOLIC = 2
-    CHRISTIAN = 3
-    MUSLIM = 6
-
-
-@add_base_preferences
-class PoliticsEnum(IntEnum):
-    """Political orientation codes used in Hinge."""
-
-    LIBERAL = 1
-    MODERATE = 2
-    CONSERVATIVE = 3
-    NOT_POLITICAL = 4
-    OTHER = 5
-
-
-@add_base_preferences
-class RelationshipTypeEnum(IntEnum):
-    """Relationship type codes used in Hinge."""
-
-    MONOGAMY = 1
-    NON_MONOGAMY = 2
-    FIGURING_OUT = 3
-
-
-@add_base_preferences
-class LanguageEnum(IntEnum):
-    """Language codes used in Hinge."""
-
-    ENGLISH = 26
-    GERMAN = 36
-    VIETNAMESE = 126
-    FRENCH = 32
-    SPANISH = 108
-
-
-@add_base_preferences
-class EthnicitiesEnum(IntEnum):
-    """Ethnicity codes used in Hinge."""
-
-    NATIVE_AMERICAN = 1
-    BLACK_AFRICAN = 2
-    EAST_ASIAN = 3
-    HISPANIC_LATINO = 4
-    MIDDLE_EASTERN = 5
-    PACIFIC_ISLANDER = 6
-    SOUTH_ASIAN = 7
-    WHITE_CAUCASIAN = 8
-    OTHER = 9
-    SOUTHEAST_ASIAN = 10
-
-
-class QuestionId(str, Enum):
-    """Enum for Hinge question IDs."""
-
-    DONT_HATE_ME_IF_I = "5b5799a05b162c2841794201"  # "Don't hate me if I"
-    MY_LOVE_LANGUAGE_IS = "5be0789228fd883a24045da0"  # "My Love Language is"
-    ID_FALL_FOR_YOU_IF = "5b57992f5b162c284179343a"  # "I'd fall for you if"
-    WHAT_IF_I_TOLD_YOU_THAT = "5ae735fc636de0035ebc1977"  # "What if I told you that"
-    DORKIEST_THING_ABOUT_ME = (
-        "5b16da2b636de0035ea7e43a"  # "The dorkiest thing about me is"
-    )
-    WELL_GET_ALONG_IF = "5ae73690636de0035ebc2238"  # "We'll get along if"
-    WE_ARE_SAME_WEIRD = "5cc8753228fd883a24ea9ff4"  # "We're the same type of weird if"
-    UNKNOWN = "unknown"  # Fallback for missing values
-
-    @classmethod
-    def _missing_(cls, value):
-        """Handle missing values gracefully."""
-        print(
-            f"Warning: Missing QuestionId value for {value}. "
-            f"Defaulting to UNKNOWN."
-        )
-        return cls.UNKNOWN
-
-    @property
-    def prompt_text(self) -> str:
-        """Return the prompt text associated with the question ID."""
-        return {
-            self.DONT_HATE_ME_IF_I: "Don't hate me if I",
-            self.MY_LOVE_LANGUAGE_IS: "My Love Language is",
-            self.ID_FALL_FOR_YOU_IF: "I'd fall for you if",
-            self.WHAT_IF_I_TOLD_YOU_THAT: "What if I told you that",
-            self.DORKIEST_THING_ABOUT_ME: "The dorkiest thing about me is",
-            self.WELL_GET_ALONG_IF: "We'll get along if",
-            self.WE_ARE_SAME_WEIRD: "We're the same type of weird if",
-        }[self]
 
 
 class ChildrenStatus(BaseHingeModel):
@@ -346,14 +185,6 @@ class GenderedDealbreaker(BaseHingeModel):
     non_binary_people: bool | None = Field(default=None, alias="3")
 
 
-class GenderPreferences(IntEnum):
-    """Enum for gender preferences in user settings."""
-
-    MEN = 0
-    WOMEN = 1
-    NON_BINARY_PEOPLE = 3
-
-
 class Dealbreakers(BaseHingeModel):
     """Schema for dealbreaker flags in user preferences."""
 
@@ -390,7 +221,7 @@ class Preferences(BaseHingeModel):
     ethnicities: list[EthnicitiesEnum]
     smoking: list[SmokingStatusEnum]
     education_attained: list[EducationAttainedEnum]
-    family_plans: list[int] | None = [-1]  # TODO: Define proper enum
+    family_plans: list[int]  # TODO: Define proper enum
     dating_intentions: list[DatingIntentionEnum]
     politics: list[PoliticsEnum]
     gender_preferences: list[GenderPreferences] = Field(..., alias="genderPreferences")
