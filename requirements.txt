@@ -8,3 +8,4 @@ structlog~=25.4.0
 httpx~=0.28.1
 websockets~=15.0.1
 python-dotenv~=1.1.1
+pydantic_core~=2.33.2
