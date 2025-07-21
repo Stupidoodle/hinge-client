@@ -3,10 +3,13 @@
 The holy texts. Parsing this much JSON without Pydantic is a war crime.
 """
 
-from datetime import datetime
+from __future__ import annotations
+from datetime import datetime, timezone
 from enum import IntEnum
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, UUID4
 from pydantic.alias_generators import to_camel
+from typing import Any, Literal, TYPE_CHECKING
+from uuid import uuid4
 
 from hinge_enums import (
     ChildrenStatusEnum,
@@ -24,6 +27,10 @@ from hinge_enums import (
     ReligionEnum,
     SmokingStatusEnum,
 )
+from logging_config import logger as log
+
+if TYPE_CHECKING:
+    from hinge_client import HingeClient
 
 
 class BaseHingeModel(BaseModel):
@@ -34,6 +41,18 @@ class BaseHingeModel(BaseModel):
         extra="ignore",
         populate_by_name=True,
     )
+
+
+class ActiveHingeModel(BaseHingeModel):
+    """Base model that can hold a client instance to perform actions."""
+
+    client: HingeClient
+
+
+class ContentHingeModel(ActiveHingeModel):
+    """Base model for content-related actions that can a subject instance."""
+
+    subject: RecommendationSubject
 
 
 class ChildrenStatus(BaseHingeModel):
@@ -282,8 +301,14 @@ class LikeLimit(BaseHingeModel):
 
     likes_left: int
     super_likes_left: int  # If you have those, consider yourself lost
-    free_super_likes_left: int
+    free_super_likes_left: int | None = None  # Added for free super likes
     free_super_like_expiration: datetime | None = None
+
+
+class LikeResponse(BaseHingeModel):
+    """Schema for the response after liking a user."""
+
+    limit: LikeLimit
 
 
 class TextReview(BaseHingeModel):
@@ -292,11 +317,48 @@ class TextReview(BaseHingeModel):
     is_harmful: bool
 
 
-class RecommendationSubject(BaseHingeModel):
+class RecommendationSubject(ActiveHingeModel):
     """A single user recommendation from the feed."""
 
     subject_id: str
     rating_token: str
+
+    async def skip(self) -> dict[str, Any]:
+        """Skip this recommendation.
+
+        Returns:
+            dict[str, Any]: The response from the server.
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails.
+
+        """
+        log.info("Skipping user", subject_id=self.subject_id)
+        payload = CreateRate(
+            rating="skip",
+            subject_id=self.subject_id,
+            rating_token=self.rating_token,
+            session_id=self.client.session_id,
+            initiated_with=None,
+        )
+
+        response = await self.client.client.post(
+            "/rate/v2/initiate",
+            json=payload.model_dump(by_alias=True, exclude_none=True),
+            headers=self.client._get_default_headers(),  # noqa
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_full_content(self) -> ProfileContent:
+        """Fetch the full content for this subject and inject dependencies.
+
+        Returns:
+            ProfileContent: The full content of the user, including photos and answers.
+
+        """
+        log.info("Hydrating full content for user", subject_id=self.subject_id)
+        return await self.client.get_hydrated_profile_content(self)
 
 
 class RecommendationsFeed(BaseHingeModel):
@@ -402,7 +464,59 @@ class BoundingBox(BaseHingeModel):
     bottom_right: dict[str, float]
 
 
-class PhotoContent(BaseHingeModel):
+class CreateRateContentPrompt(BaseHingeModel):
+    """Payload for the prompt object inside the rate content."""
+
+    answer: str
+    content_id: str
+    question: str
+
+
+class CreateRateContent(BaseHingeModel):
+    """Dynamic content payload for the main rating request."""
+
+    comment: str | None = None
+    photo: PhotoContent | None = None
+    prompt: CreateRateContentPrompt | None = None
+
+    @model_validator(mode="after")
+    def check_photo_or_prompt(self) -> "CreateRateContent":
+        """Ensure that either photo or prompt is provided, but not both."""
+        if self.photo is None and self.prompt is None:
+            raise ValueError(
+                "Either 'photo' or 'prompt' must be set in RateContentPayload"
+            )
+
+        if self.photo is not None and self.prompt is not None:
+            raise ValueError(
+                "'photo' and 'prompt' cannot both be set in RateContentPayload"
+            )
+
+        return self
+
+
+class CreateRate(BaseHingeModel):
+    """Schema for the /rate/v2/initiate endpoint."""
+
+    rating_id: str = Field(default_factory=lambda: str(uuid4()).upper())
+    hcm_run_id: UUID4 | None = None
+    session_id: str
+    content: CreateRateContent | None = None
+    created: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    rating_token: str
+    initiated_with: str | None = "standard"
+    rating: Literal["like", "note", "skip"]
+    has_pairing: bool = False  # No clue what this is
+    origin: str = "compatibles"  # Could also be standouts maybe?
+    subject_id: str
+
+
+class PhotoContent(ContentHingeModel):
     """Schema for a single photo in a user's profile."""
 
     bounding_box: BoundingBox | None = None  # Added
@@ -419,6 +533,29 @@ class PhotoContent(BaseHingeModel):
     width: int | None = None  # Added
     height: int | None = None  # Added
     selfie_verified: bool | None = None
+
+    async def like(self, comment: str | None = None) -> LikeResponse:
+        """Like this specific photo, with an optional comment.
+
+        Args:
+            comment (str): Optional comment to add with the like.
+
+        Returns:
+            LikeResponse: The response containing the updated like limits.
+
+        """
+        log.info(
+            "Initiating like on photo",
+            subject_id=self.subject.subject_id,
+            content_id=self.content_id,
+            has_comment=comment is not None,
+        )
+
+        return await self.client.rate_user(
+            subject=self.subject,
+            content_item=self,
+            comment=comment,
+        )
 
 
 class Feedback(BaseHingeModel):
@@ -450,7 +587,7 @@ class AnswerContentPayload(BaseHingeModel):
     text_answer: TextAnswer
 
 
-class AnswerContent(BaseHingeModel):
+class AnswerContent(ContentHingeModel):
     """Schema for a prompt answer."""
 
     content_id: str
@@ -460,6 +597,29 @@ class AnswerContent(BaseHingeModel):
     response: str
     transcription_metadata: TranscriptionMetadata | None = None  # Added
     feedback: Feedback | None = None  # Added
+
+    async def like(self, comment: str | None = None) -> LikeResponse:
+        """Like this specific answer, with an optional comment.
+
+        Args:
+            comment (str): Optional comment to add with the like.
+
+        Returns:
+            LikeResponse: The response containing the updated like limits.
+
+        """
+        log.info(
+            "Initiating like on answer",
+            subject_id=self.subject.subject_id,
+            content_id=self.content_id,
+            has_comment=comment is not None,
+        )
+
+        return await self.client.rate_user(
+            subject=self.subject,
+            content_item=self,
+            comment=comment,
+        )
 
 
 class PromptContent(BaseHingeModel):
