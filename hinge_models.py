@@ -4,6 +4,7 @@ The holy texts. Parsing this much JSON without Pydantic is a war crime.
 """
 
 from datetime import datetime
+from enum import Enum, IntEnum
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
@@ -16,6 +17,294 @@ class BaseHingeModel(BaseModel):
         extra="ignore",
         populate_by_name=True,
     )
+
+
+class ChildrenStatusEnum(IntEnum):
+    """Children status codes used in Hinge."""
+
+    NO = 1
+
+
+class DatingIntentionEnum(IntEnum):
+    """Dating intention codes used in Hinge."""
+
+    PREFER_NOT_TO_SAY = 0
+    LIFE_PARTNER = 1
+    FIGURING_OUT_GOALS = 6
+
+
+class DrinkingStatusEnum(IntEnum):
+    """Drinking status codes used in Hinge."""
+
+    PREFER_NOT_TO_SAY = 0
+    YES = 1
+    SOMETIMES = 2
+    NO = 3
+
+
+class DrugStatusEnum(IntEnum):
+    """Drug usage status codes used in Hinge."""
+
+    PREFER_NOT_TO_SAY = 0
+    YES = 1
+    SOMETIMES = 2
+    NO = 3
+
+
+class SmokingStatusEnum(IntEnum):
+    """Smoking status codes used in Hinge."""
+
+    PREFER_NOT_TO_SAY = 0
+    YES = 1
+    SOMETIMES = 2
+    NO = 3
+
+
+class MarijuanaStatusEnum(IntEnum):
+    """Marijuana usage status codes used in Hinge."""
+
+    PREFER_NOT_TO_SAY = 0
+    YES = 1
+    SOMETIMES = 2
+    NO = 3
+
+
+class EducationAttainedEnum(IntEnum):
+    """Education levels used in Hinge."""
+
+    PREFER_NOT_TO_SAY = 0
+    SECONDARY_SCHOOL = 1
+    UNDERGRAD = 2
+    POSTGRAD = 3
+
+
+class ReligionEnum(IntEnum):
+    """Religion codes used in Hinge."""
+
+    CATHOLIC = 2
+    CHRISTIAN = 3
+    MUSLIM = 6
+
+
+class PoliticsEnum(IntEnum):
+    """Political orientation codes used in Hinge."""
+
+    PREFER_NOT_TO_SAY = 0
+    LIBERAL = 1
+    MODERATE = 2
+    CONSERVATIVE = 3
+    NOT_POLITICAL = 4
+    OTHER = 5
+
+
+class RelationshipTypeEnum(IntEnum):
+    """Relationship type codes used in Hinge."""
+
+    MONOGAMY = 1
+    NON_MONOGAMY = 2
+    FIGURING_OUT = 3
+
+
+class LanguageEnum(IntEnum):
+    """Language codes used in Hinge."""
+
+    ENGLISH = 26
+    GERMAN = 36
+    VIETNAMESE = 126
+    FRENCH = 32
+    SPANISH = 108
+    UNKNOWN = -1
+
+    @classmethod
+    def _missing_(cls, value):
+        """Handle missing values gracefully."""
+        print(
+            f"Warning: Missing LanguageEnum value for {value}. Defaulting to UNKNOWN."
+        )
+        return cls.UNKNOWN
+
+
+class EthnicitiesEnum(IntEnum):
+    """Ethnicity codes used in Hinge."""
+
+    PREFER_NOT_TO_SAY = 0
+    NATIVE_AMERICAN = 1
+    BLACK_AFRICAN = 2
+    EAST_ASIAN = 3
+    HISPANIC_LATINO = 4
+    MIDDLE_EASTERN = 5
+    PACIFIC_ISLANDER = 6
+    SOUTH_ASIAN = 7
+    WHITE_CAUCASIAN = 8
+    OTHER = 9
+    SOUTHEAST_ASIAN = 10
+
+
+class QuestionId(str, Enum):
+    DONT_HATE_ME_IF_I = "5b5799a05b162c2841794201"  # "Don't hate me if I"
+    MY_LOVE_LANGUAGE_IS = "5be0789228fd883a24045da0"  # "My Love Language is"
+    ID_FALL_FOR_YOU_IF = "5b57992f5b162c284179343a"  # "I'd fall for you if"
+    WHAT_IF_I_TOLD_YOU_THAT = "5ae735fc636de0035ebc1977"  # "What if I told you that"
+    DORKIEST_THING_ABOUT_ME = (
+        "5b16da2b636de0035ea7e43a"  # "The dorkiest thing about me is"
+    )
+    WELL_GET_ALONG_IF = "5ae73690636de0035ebc2238"  # "We'll get along if"
+    WE_ARE_SAME_WEIRD = "5cc8753228fd883a24ea9ff4"  # "We're the same type of weird if"
+    UNKNOWN = "unknown"  # Fallback for missing values
+
+    @classmethod
+    def _missing_(cls, value):
+        """Handle missing values gracefully."""
+        print(
+            f"Warning: Missing QuestionId value for {value}. "
+            f"Defaulting to UNKNOWN."
+        )
+        return cls.UNKNOWN
+
+    @property
+    def prompt_text(self) -> str:
+        return {
+            self.DONT_HATE_ME_IF_I: "Don't hate me if I",
+            self.MY_LOVE_LANGUAGE_IS: "My Love Language is",
+            self.ID_FALL_FOR_YOU_IF: "I'd fall for you if",
+            self.WHAT_IF_I_TOLD_YOU_THAT: "What if I told you that",
+            self.DORKIEST_THING_ABOUT_ME: "The dorkiest thing about me is",
+            self.WELL_GET_ALONG_IF: "We'll get along if",
+            self.WE_ARE_SAME_WEIRD: "We're the same type of weird if",
+        }[self]
+
+
+class ChildrenStatus(BaseHingeModel):
+    """Wrapper for children status list for the /user/v3 endpoint."""
+
+    value: ChildrenStatusEnum | None = None
+    visible: bool
+
+
+class DatingIntention(BaseHingeModel):
+    """Wrapper for dating intentions list for the /user/v3 endpoint."""
+
+    value: DatingIntentionEnum | None = None
+    visible: bool
+
+
+class DrinkingStatus(BaseHingeModel):
+    """Wrapper for drinking status list for the /user/v3 endpoint."""
+
+    value: DrinkingStatusEnum | None = None
+    visible: bool
+
+
+class DrugStatus(BaseHingeModel):
+    """Wrapper for drug status list for the /user/v3 endpoint."""
+
+    value: DrugStatusEnum | None = None
+    visible: bool
+
+
+class MarijuanaStatus(BaseHingeModel):
+    """Wrapper for marijuana status list for the /user/v3 endpoint."""
+
+    value: MarijuanaStatusEnum | None = None
+    visible: bool
+
+
+class SmokingStatus(BaseHingeModel):
+    """Wrapper for smoking status list for the /user/v3 endpoint."""
+
+    value: SmokingStatusEnum | None = None
+    visible: bool
+
+
+class Religion(BaseHingeModel):
+    """Wrapper for religions list for the /user/v3 endpoint."""
+
+    value: list[ReligionEnum] | None = None
+    visible: bool
+
+
+class Politics(BaseHingeModel):
+    """Wrapper for politics list for the /user/v3 endpoint."""
+
+    value: PoliticsEnum | None = None
+    visible: bool
+
+
+class RelationshipType(BaseHingeModel):
+    """Wrapper for relationship types list for the /user/v3 endpoint."""
+
+    value: list[RelationshipTypeEnum] | None = None
+    visible: bool
+
+
+class Language(BaseHingeModel):
+    """Wrapper for languages list for the /user/v3 endpoint."""
+
+    value: list[LanguageEnum] | None = None
+    visible: bool
+
+
+class Ethnicities(BaseHingeModel):
+    """Wrapper for ethnicities list for the /user/v3 endpoint."""
+
+    value: list[EthnicitiesEnum] | None = None
+    visible: bool
+
+
+class Educations(BaseHingeModel):
+    """Wrapper for education list for the /user/v3 endpoint."""
+
+    value: list[str] | None = None
+    visible: bool
+
+
+class FamilyPlans(BaseHingeModel):
+    """Wrapper for family plans list for the /user/v3 endpoint."""
+
+    value: int | None = None  # TODO: Define proper enum
+    visible: bool
+
+
+class GenderIdentity(BaseHingeModel):
+    """Wrapper for gender identity for the /user/v3 endpoint."""
+
+    value: int | None = None  # 26 is Man I guess? TODO: Define proper enum
+    visible: bool
+
+
+class HomeTown(BaseHingeModel):
+    """Wrapper for hometown information for the /user/v3 endpoint."""
+
+    value: str | None = None
+    visible: bool
+
+
+class JobTitle(BaseHingeModel):
+    """Wrapper for job title information for the /user/v3 endpoint."""
+
+    value: str | None = None
+    visible: bool
+
+
+class Pets(BaseHingeModel):
+    """Wrapper for pets information for the /user/v3 endpoint."""
+
+    value: list[int] | None = None  # TODO: Define proper enum
+    visible: bool
+
+
+class SexualOrientation(BaseHingeModel):
+    """Wrapper for sexual orientation information for the /user/v3 endpoint."""
+
+    value: list[int] | None = None  # TODO: Define proper enum
+    visible: bool
+
+
+class Works(BaseHingeModel):
+    """Wrapper for works information for the /user/v3 endpoint."""
+
+    value: str | None = None
+    visible: bool
 
 
 class HingeAuthToken(BaseHingeModel):
@@ -38,6 +327,8 @@ class LikeLimit(BaseHingeModel):
 
     likes_left: int
     super_likes_left: int  # If you have those, consider yourself lost
+    free_super_likes_left: int
+    free_super_like_expiration: datetime | None = None
 
 
 class TextReview(BaseHingeModel):
@@ -70,39 +361,62 @@ class Location(BaseHingeModel):
     """Schema for a user's location."""
 
     name: str
+    latitude: float | None = None
+    longitude: float | None = None
+    metro_area: str | None = None
+    metro_area_v2: str | None = None
+    country_short: str | None = None
+    admin_area1_long: str | None = None
+    admin_area1_short: str | None = None
+    admin_area2: str | None = None
 
 
 class Profile(BaseHingeModel):
-    """Schema for a user's profile data."""
+    """Schema for a user's profile data (can be public or self-profile subset)."""
 
+    age: int | None = None  # Added from /user/v3
+    birthday: datetime | None = None  # Added from /user/v3
     covid_vax: int | None = None
-    children: int | None = None
-    dating_intention: int | None = None
+    children: ChildrenStatus | ChildrenStatusEnum | None = None  # Using new Enum
+    dating_intention: DatingIntention | ChildrenStatusEnum | None = (
+        None  # Using new Enum
+    )
     dating_intention_text: str | None = None
-    drinking: int | None = None
-    drugs: int | None = None
-    educations: list[str] | None = None
-    ethnicities: list[int] | None = None
-    family_plans: int | None = None
+    drinking: DrinkingStatus | DrinkingStatusEnum | None = None  # Using new Enum
+    drugs: DrugStatus | DrugStatusEnum | None = None  # Using new Enum
+    education_attained: EducationAttainedEnum | None = None  # Added from /user/v3
+    educations: Educations | list[str] | None = None
+    ethnicities: Ethnicities | list[EthnicitiesEnum] | None = None
+    ethnicities_text: str | None = None  # Added from /user/v3
+    family_plans: FamilyPlans | int | None = None
     first_name: str
-    gender_identity_id: int | None = None
+    first_completed_date: datetime | None = None  # Added from /user/v3
+    gender_id: int | None = None  # Added from /user/v3
+    gender_identity_id: GenderIdentity | int | None = None
+    gender_identity: str | None = None  # Added from /user/v3
     height: int | None = None
-    hometown: str | None = None
-    job_title: str | None = None
-    languages_spoken: list[int] | None = None
+    hometown: HomeTown | str | None = None
+    job_title: JobTitle | str | None = None
+    languages_spoken: list[Language] | list[LanguageEnum] | None = (
+        None  # Using new Enum
+    )
     last_name: str | None = None
     location: Location
-    marijuana: int | None = None
-    pets: list[int] | None = None
-    politics: int | None = None
+    match_note: str | None = None  # Added from /user/v3
+    marijuana: MarijuanaStatus | None = None  # Using new Enum
+    pets: Pets | list[int] | None = None
+    politics: Politics | PoliticsEnum | None = None
     pronouns: list[int] | None = None
-    relationship_type_ids: list[int] | None = None
+    relationship_type_ids: RelationshipType | list[RelationshipTypeEnum] | None = (
+        None  # Using new Enum
+    )
     relationship_types_text: str | None = None
-    religions: list[int] | None = None
+    religions: Religion | ReligionEnum | None = None  # Using new Enum
     selfie_verified: bool | None = None
-    sexual_orientations: list[int] | None = None
-    smoking: int | None = None
-    works: str | None = None
+    sexual_orientations: SexualOrientation | list[int] | None = None
+    smoking: SmokingStatus | SmokingStatusEnum | None = None
+    works: Works | str | None = None
+    zodiac: int | None = None  # Added from /user/v3
     last_active_status_id: int | None = None
     did_just_join: bool | None = Field(default=None, alias="didjustJoin")
 
@@ -114,31 +428,90 @@ class UserProfile(BaseHingeModel):
     profile: Profile
 
 
+class SelfProfileResponse(BaseHingeModel):
+    """Schema for the authenticated user's full profile data (GET /user/v3)."""
+
+    user_id: str
+    created: datetime
+    registered: datetime
+    modified: datetime
+    last_active_opt_in: bool
+    profile: Profile
+    paused: bool
+
+
+class BoundingBox(BaseHingeModel):
+    """Schema for bounding box coordinates within a photo."""
+
+    top_left: dict[str, float]
+    bottom_right: dict[str, float]
+
+
 class PhotoContent(BaseHingeModel):
     """Schema for a single photo in a user's profile."""
 
+    bounding_box: BoundingBox | None = None  # Added
     caption: str | None = None
-    content_id: str
     cdn_id: str
+    content_id: str
     location: str | None = None
     prompt_id: str | None = None
     source: str | None = None
+    source_id: str | None = None  # Added
+    video_url: str | None = None  # Added
+    p_hash: str | None = None  # Added
     url: str
+    width: int | None = None  # Added
+    height: int | None = None  # Added
+    selfie_verified: bool | None = None
+
+
+class Feedback(BaseHingeModel):
+    """Schema for the feedback on a prompt."""
+
+    evaluation: str | None = None
+    detail: str | None = None
+    feedback_token: str | None = None
+
+
+class TranscriptionMetadata(BaseHingeModel):
+    """Placeholder for transcription metadata."""
+
+    pass
+
+
+class TextAnswer(BaseHingeModel):
+    """Schema for the text content of a prompt answer."""
+
+    response: str
+    question_id: str  # The questionId is duplicated here for some reason
+
+
+class AnswerContentPayload(BaseHingeModel):
+    """Schema for a single answer object in the PUT /content/v1/answers payload."""
+
+    position: int
+    question_id: QuestionId
+    text_answer: TextAnswer
 
 
 class AnswerContent(BaseHingeModel):
     """Schema for a prompt answer."""
 
     content_id: str
-    question_id: str
+    position: int | None = None  # Added
+    question_id: QuestionId
+    type: str | None = None  # Added (e.g., 'text')
     response: str
+    transcription_metadata: TranscriptionMetadata | None = None  # Added
+    feedback: Feedback | None = None  # Added
 
 
 class PromptContent(BaseHingeModel):
     """Schema for a user's prompt content."""
 
     content_id: str
-    question_id: str
+    question_id: QuestionId
     options: list[str]
 
 
@@ -146,4 +519,10 @@ class ProfileContent(BaseHingeModel):
     """Schema for a user's full content (photos, answers, etc.)."""
 
     user_id: str
+    content: dict[str, list[PhotoContent | AnswerContent] | PromptContent]
+
+
+class SelfContentResponse(BaseHingeModel):
+    """Schema for the authenticated user's content data (GET /content/v2)."""
+
     content: dict[str, list[PhotoContent | AnswerContent]]
