@@ -37,7 +37,7 @@ from hinge_enums import (
 from logging_config import logger as log
 
 if TYPE_CHECKING:
-    from hinge_client import HingeClient
+    from hinge_client import HingeClient  # noqa: F401
 
 
 class BaseHingeModel(BaseModel):
@@ -53,7 +53,7 @@ class BaseHingeModel(BaseModel):
 class ActiveHingeModel(BaseHingeModel):
     """Base model that can hold a client instance to perform actions."""
 
-    client: Any
+    client: Any = Field(exclude=True)
 
 
 class ContentHingeModel(ActiveHingeModel):
@@ -307,7 +307,9 @@ class LikeLimit(BaseHingeModel):
     """Schema for the daily like limit status."""
 
     likes_left: int
-    super_likes_left: int  # If you have those, consider yourself lost
+    super_likes_left: int = Field(  # If you have those, consider yourself lost
+        alias="superlikesLeft"
+    )
     free_super_likes_left: int | None = None  # Added for free super likes
     free_super_like_expiration: datetime | None = None
 
@@ -368,7 +370,7 @@ class RecommendationSubject(ActiveHingeModel):
 
         """
         log.info("Hydrating full content for user", subject_id=self.subject_id)
-        return await self.client.get_hydrated_profile_content(self)
+        return await self.client.get_profile_content(self.subject_id)
 
 
 class RecommendationsFeed(BaseHingeModel):
@@ -430,7 +432,7 @@ class Profile(BaseHingeModel):
     last_name: str | None = None
     location: Location
     match_note: str | None = None  # Added from /user/v3
-    marijuana: MarijuanaStatus | None = None  # Using new Enum
+    marijuana: MarijuanaStatus | MarijuanaStatusEnum | None = None  # Using new Enum
     pets: Pets | list[int] | None = None
     politics: Politics | PoliticsEnum | None = None
     pronouns: list[int] | None = None
@@ -525,15 +527,6 @@ class CreateRate(BaseHingeModel):
     origin: str | None = "compatibles"  # Could also be standouts maybe?
     subject_id: str
 
-    @field_validator("initiated_with", mode="after")
-    def validate_initiated_with(cls, v):
-        """Ensure initiated_with is set if rating is 'like' or 'superlike'."""
-        if v is None and cls.rating in ["like", "superlike"]:  # noqa
-            raise ValueError(
-                "initiated_with must be set when rating is 'like' or 'superlike'"
-            )
-        return v
-
 
 class PhotoContent(ContentHingeModel):
     """Schema for a single photo in a user's profile."""
@@ -553,11 +546,14 @@ class PhotoContent(ContentHingeModel):
     height: int | None = None  # Added
     selfie_verified: bool | None = None
 
-    async def like(self, comment: str | None = None) -> LikeResponse:
+    async def like(
+        self, comment: str | None = None, use_superlike: bool = False
+    ) -> LikeResponse:
         """Like this specific photo, with an optional comment.
 
         Args:
             comment (str): Optional comment to add with the like.
+            use_superlike (bool): Whether to use a superlike instead of a regular like.
 
         Returns:
             LikeResponse: The response containing the updated like limits.
@@ -568,6 +564,7 @@ class PhotoContent(ContentHingeModel):
             subject_id=self.subject.subject_id,
             content_id=self.content_id,
             has_comment=comment is not None,
+            use_superlike=use_superlike,
         )
 
         self.client.remove_recommendation(self.subject.subject_id)
@@ -576,6 +573,7 @@ class PhotoContent(ContentHingeModel):
             subject=self.subject,
             content_item=self,
             comment=comment,
+            use_superlike=use_superlike,
         )
 
 
@@ -626,11 +624,14 @@ class AnswerContent(ContentHingeModel):
     transcription_metadata: TranscriptionMetadata | None = None  # Added
     feedback: Feedback | None = None  # Added
 
-    async def like(self, comment: str | None = None) -> LikeResponse:
+    async def like(
+        self, comment: str | None = None, use_superlike: bool = False
+    ) -> LikeResponse:
         """Like this specific answer, with an optional comment.
 
         Args:
             comment (str): Optional comment to add with the like.
+            use_superlike (bool): Whether to use a superlike instead of a regular like.
 
         Returns:
             LikeResponse: The response containing the updated like limits.
@@ -641,6 +642,7 @@ class AnswerContent(ContentHingeModel):
             subject_id=self.subject.subject_id,
             content_id=self.content_id,
             has_comment=comment is not None,
+            use_superlike=use_superlike,
         )
 
         self.client.remove_recommendation(self.subject.subject_id)
@@ -649,6 +651,7 @@ class AnswerContent(ContentHingeModel):
             subject=self.subject,
             content_item=self,
             comment=comment,
+            use_superlike=use_superlike,
         )
 
     @field_validator("transcription_metadata", mode="before")
