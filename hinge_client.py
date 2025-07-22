@@ -704,51 +704,60 @@ class HingeClient:
         Returns:
 
         """
-        hcm_run_id = None
-        rating_type: Literal["note", "like"] = "note" if comment else "like"
+        try:
+            hcm_run_id = None
+            rating_type: Literal["note", "like"] = "note" if comment else "like"
 
-        if comment:
-            hcm_run_id = await self._run_text_review(
-                text=comment, receiver_id=subject.subject_id
+            if comment:
+                hcm_run_id = await self._run_text_review(
+                    text=comment, receiver_id=subject.subject_id
+                )
+
+            if isinstance(content_item, PhotoContent):
+                rate_content = CreateRateContent(photo=content_item, comment=comment)
+            elif isinstance(content_item, AnswerContent):
+                rate_content = CreateRateContent(
+                    prompt=CreateRateContentPrompt(
+                        answer=content_item.response or "",
+                        content_id=content_item.content_id,
+                        question=content_item.question_id.prompt_text,
+                    ),
+                    comment=comment,
+                )
+            else:
+                raise TypeError("content_item must be PhotoContent or AnswerContent")
+
+            payload = CreateRate(
+                session_id=self.session_id,
+                rating_token=subject.rating_token,
+                subject_id=subject.subject_id,
+                rating=rating_type,
+                hcm_run_id=hcm_run_id,
+                content=rate_content,
+                initiated_with="superlike" if use_superlike else "like",
             )
 
-        if isinstance(content_item, PhotoContent):
-            rate_content = CreateRateContent(photo=content_item, comment=comment)
-        elif isinstance(content_item, AnswerContent):
-            rate_content = CreateRateContent(
-                prompt=CreateRateContentPrompt(
-                    answer=content_item.response or "",
-                    content_id=content_item.content_id,
-                    question=content_item.question_id.prompt_text,
-                ),
-                comment=comment,
+            log.info(
+                "Sending rate request",
+                payload=payload.model_dump(by_alias=True, exclude_none=True),
             )
-        else:
-            raise TypeError("content_item must be PhotoContent or AnswerContent")
 
-        payload = CreateRate(
-            session_id=self.session_id,
-            rating_token=subject.rating_token,
-            subject_id=subject.subject_id,
-            rating=rating_type,
-            hcm_run_id=hcm_run_id,
-            content=rate_content,
-            initiated_with="superlike" if use_superlike else "like",
-        )
+            response = await self.client.post(
+                "/rate/v2/initiate",
+                json=payload.model_dump(by_alias=True, exclude_none=True),
+                headers=self._get_default_headers(),
+            )
+            response.raise_for_status()
 
-        log.info(
-            "Sending rate request",
-            payload=payload.model_dump(by_alias=True, exclude_none=True),
-        )
-
-        response = await self.client.post(
-            "/rate/v2/initiate",
-            json=payload.model_dump(by_alias=True, exclude_none=True),
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-
-        return response.json()
+            return response.json()
+        except Exception as e:
+            log.error(
+                "Failed to rate user",
+                subject_id=subject.subject_id,
+                content_item=content_item.model_dump(),
+                error=str(e),
+            )
+            raise HingeAuthError(f"Failed to rate user: {str(e)}") from e
 
     def _create_session(self) -> None:
         """Create a session file with the current authentication state."""
@@ -874,25 +883,25 @@ class HingeClient:
         now_utc = datetime.now(timezone.utc)
 
         hinge_token_valid = False
-        
+
         if self.hinge_token_expires:
             hinge_token_valid = self.hinge_token_expires > now_utc
-        
+
         sendbird_token_valid = False
-        
+
         if self.sendbird_jwt_expires:
             sendbird_token_valid = self.sendbird_jwt_expires > now_utc
-            
+
             if not sendbird_token_valid:
                 log.warning("Sendbird JWT has expired, reauthenticating...")
                 await self._authenticate_with_sendbird()
-                
+
                 if not self.sendbird_jwt:
                     log.error(
                         "Failed to reauthenticate with Sendbird, session is invalid."
                     )
                     return False
-        
+
         is_valid = hinge_token_valid and sendbird_token_valid
         log.info(
             "Session validity check",
@@ -900,8 +909,9 @@ class HingeClient:
             hinge_token_valid=hinge_token_valid,
             sendbird_token_valid=sendbird_token_valid,
         )
-        
+
         return is_valid
+
 
 async def main() -> None:
     """Run the (Un)Hinge(d)Client.

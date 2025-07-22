@@ -567,14 +567,24 @@ class PhotoContent(ContentHingeModel):
             use_superlike=use_superlike,
         )
 
-        self.client.remove_recommendation(self.subject.subject_id)
+        try:
+            result = await self.client.rate_user(
+                subject=self.subject,
+                content_item=self,
+                comment=comment,
+                use_superlike=use_superlike,
+            )
+        except Exception as e:
+            log.error(
+                "Failed to like photo",
+                subject_id=self.subject.subject_id,
+                content_id=self.content_id,
+                error=str(e),
+            )
+            raise e
 
-        return await self.client.rate_user(
-            subject=self.subject,
-            content_item=self,
-            comment=comment,
-            use_superlike=use_superlike,
-        )
+        self.client.remove_recommendation(self.subject.subject_id)
+        return result
 
 
 class Feedback(BaseHingeModel):
@@ -588,14 +598,16 @@ class Feedback(BaseHingeModel):
 class TranscriptionMetadata(BaseHingeModel):
     """Placeholder for transcription metadata."""
 
-    content_id: str
+    content_id: str | None = None
     position: int | None = None
-    question_id: QuestionId
-    type: Literal["voice", "video"]
-    url: str
-    cdn_id: str
-    waveform: str
-    transcription: str
+    question_id: QuestionId | None = None
+    type: Literal["voice", "video", "text"] | None = None
+    url: str | None = None
+    cdn_id: str | None = None
+    waveform: str | None = None
+    transcription: str | None = None
+    languageCode: str | None = None  # e.g. 'en-US'
+    status: str | None = None  # e.g. 'success'
 
 
 class TextAnswer(BaseHingeModel):
@@ -613,13 +625,12 @@ class AnswerContentPayload(BaseHingeModel):
     text_answer: TextAnswer
 
 
-class AnswerContent(ContentHingeModel):
+class AnswerContent(ContentHingeModel, TranscriptionMetadata):
     """Schema for a prompt answer."""
 
     content_id: str
     position: int | None = None  # Added
     question_id: QuestionId
-    type: str | None = None  # Added (e.g., 'text')
     response: str | None = None  # NOTE: This can be None for voice/video answers
     transcription_metadata: TranscriptionMetadata | None = None  # Added
     feedback: Feedback | None = None  # Added
