@@ -1,6 +1,5 @@
 """Streamlit app for the Hinge client."""
 
-import asyncio
 import streamlit as st
 import glob
 import json
@@ -9,6 +8,7 @@ import time
 from hinge_client import HingeClient
 from hinge_error import HingeAuthError
 from logging_config import logger as log
+from utils import run_async
 
 st.set_page_config(
     page_title="Unhinged",
@@ -75,7 +75,7 @@ elif selected_session == new_session_option:
 client = st.session_state.client
 
 if client and (client_initialized or st.button("Check Session / Login")):
-    if asyncio.run(client.is_session_valid()):
+    if run_async(client.is_session_valid()):
         st.success("🎉 Valid session loaded! Redirecting...")
         st.session_state.logged_in = True
         time.sleep(1)
@@ -84,7 +84,7 @@ if client and (client_initialized or st.button("Check Session / Login")):
         st.warning("Session is invalid or expired. Please log in.")
         try:
             with st.spinner("Requesting OTP..."):
-                asyncio.run(client.initiate_login())
+                run_async(client.initiate_login())
             st.session_state.otp_requested = True
         except Exception as e:
             st.error(f"Login initiation failed: {e}")
@@ -97,7 +97,7 @@ if st.session_state.get("otp_requested", False) and client:
         if submitted and otp_code:
             try:
                 with st.spinner("Authenticating..."):
-                    asyncio.run(client.submit_otp(otp_code.strip()))
+                    run_async(client.submit_otp(otp_code.strip()))
                 st.session_state.logged_in = True
                 st.success("Authentication Successful! Redirecting...")
                 st.rerun()

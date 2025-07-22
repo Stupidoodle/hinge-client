@@ -1,9 +1,8 @@
 """UI Components for the Hinge Client."""
 
 from enum import IntEnum
-from typing import Any, Coroutine, Type
+from typing import Any, Type
 import streamlit as st
-import asyncio
 
 from hinge_enums import (
     ChildrenStatusEnum,
@@ -23,17 +22,7 @@ from hinge_models import (
     RecommendationSubject,
     UserProfile,
 )
-
-if "event_loop" not in st.session_state:
-    st.session_state.event_loop = asyncio.new_event_loop()
-
-loop = st.session_state.event_loop
-asyncio.set_event_loop(loop)
-
-
-def run_async(coro: Coroutine) -> Any:
-    """Run a coroutine on the app's persistent event loop."""
-    return loop.run_until_complete(coro)
+from utils import run_async
 
 
 def _display_like_popover(
@@ -84,7 +73,7 @@ def display_profile_card(  # noqa: C901
             name_line = f"{p_profile.first_name}, {p_profile.age}"
             if p_profile.selfie_verified:
                 name_line += " ✅"
-            
+
             if subject.origin == "active_lately":
                 name_line += " (Active Recently)"
             elif subject.origin == "new_here":

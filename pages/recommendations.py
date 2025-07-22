@@ -1,7 +1,7 @@
 """Recommendation Page for the Hinge Client."""
 
 from pydantic.json import pydantic_encoder
-from typing import Any, Coroutine
+from typing import Any
 import asyncio
 import json
 import streamlit as st
@@ -14,22 +14,7 @@ from hinge_models import (
 )
 from logging_config import logger as log
 from ui_components import display_profile_card
-
-# --- Page Setup & Auth Check ---
-st.set_page_config(page_title="Recommendations", page_icon="🔥", layout="wide")
-
-# --- FIX: Create and store a single, persistent event loop for the session ---
-# This ensures the HingeClient and its networking parts always use the same loop.
-if "event_loop" not in st.session_state:
-    st.session_state.event_loop = asyncio.new_event_loop()
-
-loop = st.session_state.event_loop
-asyncio.set_event_loop(loop)
-
-
-def run_async(coro: Coroutine) -> Any:
-    """Run a coroutine on the app's persistent event loop."""
-    return loop.run_until_complete(coro)
+from utils import run_async
 
 
 if not st.session_state.get("logged_in", False):
