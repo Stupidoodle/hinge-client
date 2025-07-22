@@ -187,6 +187,7 @@ class QuestionId(str, Enum):
             self.DORKIEST_THING_ABOUT_ME: "The dorkiest thing about me is",
             self.WELL_GET_ALONG_IF: "We'll get along if",
             self.WE_ARE_SAME_WEIRD: "We're the same type of weird if",
+            self.UNKNOWN: "Unknown Question",
         }[self]
 
 
