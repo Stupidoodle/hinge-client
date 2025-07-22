@@ -652,7 +652,7 @@ class HingeClient:
 
         return LikeLimit.model_validate(response.json())
 
-    async def _run_text_review(self, text: str, receiver_id: str) -> UUID:
+    async def _run_text_review(self, text: str, receiver_id: str) -> str:
         """Run the pre-flight text moderation check.
 
         Args:
@@ -678,7 +678,7 @@ class HingeClient:
         }
 
         response = await self.client.post(
-            "/fag/textreview",
+            "/flag/textreview",
             json=payload,
             headers=self._get_default_headers(),
         )
@@ -713,9 +713,9 @@ class HingeClient:
                     text=comment, receiver_id=subject.subject_id
                 )
 
-            if isinstance(content_item, PhotoContent):
+            if hasattr(content_item, "cdn_id"):
                 rate_content = CreateRateContent(photo=content_item, comment=comment)
-            elif isinstance(content_item, AnswerContent):
+            elif hasattr(content_item, "response"):
                 rate_content = CreateRateContent(
                     prompt=CreateRateContentPrompt(
                         answer=content_item.response or "",
@@ -734,7 +734,7 @@ class HingeClient:
                 rating=rating_type,
                 hcm_run_id=hcm_run_id,
                 content=rate_content,
-                initiated_with="superlike" if use_superlike else "like",
+                initiated_with="superlike" if use_superlike else "standard",
             )
 
             log.info(

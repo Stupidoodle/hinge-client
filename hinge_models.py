@@ -511,7 +511,7 @@ class CreateRate(BaseHingeModel):
     """Schema for the /rate/v2/initiate endpoint."""
 
     rating_id: str = Field(default_factory=lambda: str(uuid4()).upper())
-    hcm_run_id: UUID4 | None = None
+    hcm_run_id: str | None = None
     session_id: str
     content: CreateRateContent | None = None
     created: str = Field(
@@ -521,7 +521,7 @@ class CreateRate(BaseHingeModel):
         .replace("+00:00", "Z")
     )
     rating_token: str
-    initiated_with: Literal["like", "superlike"] | None = None
+    initiated_with: Literal["standard", "superlike"] | None = None
     rating: Literal["like", "note", "skip"]
     has_pairing: bool = False  # No clue what this is
     origin: str | None = "compatibles"  # Could also be standouts maybe?
@@ -679,6 +679,7 @@ class PromptContent(BaseHingeModel):
     content_id: str
     question_id: QuestionId
     options: list[str]
+    selected_option_index: int | None = None
 
 
 class ProfileContentContent(BaseHingeModel):
