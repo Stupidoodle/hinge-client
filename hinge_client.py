@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 from jose import jwt  # type: ignore
 from pydantic import BaseModel
 from typing import Any, Literal
-from uuid import UUID
 import asyncio
 import httpx
 import json
@@ -427,6 +426,24 @@ class HingeClient:
 
         return RecommendationsResponse.model_validate(recs_data)
 
+    async def repeat_profiles(self) -> dict[str, Any]:
+        """Recycle previously seen profiles.
+
+        This is useful when the recommendations feed returns empty.
+
+        Returns:
+            dict[str, Any]: The API response, usually an empty dict on success.
+
+        """
+        log.info("Recycling previously seen profiles", identity_id=self.identity_id)
+
+        response = await self.client.get(
+            "/user/repeat", headers=self._get_default_headers()
+        )
+        response.raise_for_status()
+
+        return response.json()
+
     async def get_self_profile(self) -> SelfProfileResponse:
         """Fetch the authenticated user's own profile data.
 
@@ -525,7 +542,7 @@ class HingeClient:
             to update.
 
         Returns:
-            dict[str, Any]: The API response from the update (usually a confirmation or partial data).
+            dict[str, Any]: The API response from the update.
 
         Raises:
             httpx.HTTPStatusError: If the API request fails.
@@ -693,15 +710,16 @@ class HingeClient:
         comment: str | None = None,
         use_superlike: bool = False,
     ) -> LikeResponse:
-        """
+        """Rate a user with a like or superlike, optionally with a comment.
 
         Args:
-            subject (RecommendationSubject):
-            content_item (PhotoContent | AnswerContent):
-            comment (str):
-            use_superlike (bool):
+            subject (RecommendationSubject): The subject to rate.
+            content_item (PhotoContent | AnswerContent): The content item to rate.
+            comment (str): Optional comment to include with the rating.
+            use_superlike (bool): Whether to use a superlike instead of a standard like.
 
         Returns:
+            LikeResponse: The response from the rating API.
 
         """
         try:
