@@ -116,6 +116,15 @@ if not client.recommendations:
     st.info(
         "No recommendations found. Click 'Fetch New Recommendations' in the sidebar."
     )
+
+    if st.button("Ran out? ♻️ Fetch from reset pool"):
+        with st.spinner("Resetting pool and fetching..."):
+            run_async(client.repeat_profiles())
+            run_async(client.get_recommendations())
+        st.cache_data.clear()
+        st.toast("Recommendation pool reset!")
+        st.rerun()
+
 else:
     profile_data_map = get_all_profile_data(client)
 
