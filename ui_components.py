@@ -7,6 +7,7 @@ import asyncio
 
 from hinge_enums import (
     ChildrenStatusEnum,
+    DatingIntentionEnum,
     DrinkingStatusEnum,
     DrugStatusEnum,
     EducationAttainedEnum,
@@ -74,12 +75,38 @@ def display_profile_card(  # noqa: C901
     index: str,
 ):
     """Render a single user profile card including all available profile data."""
+    p_profile = profile.profile
+
     with st.container(border=True):
+        # --- HEADER ---
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.header(f"{profile.profile.first_name}, {profile.profile.age}")
-            if profile.profile.location:
-                st.caption(f"📍 {profile.profile.location.name}")
+            name_line = f"{p_profile.first_name}, {p_profile.age}"
+            if p_profile.selfie_verified:
+                name_line += " ✅"
+            
+            if subject.origin == "active_lately":
+                name_line += " (Active Recently)"
+            elif subject.origin == "new_here":
+                name_line += " (New Here)"
+            elif subject.origin == "nearby":
+                name_line += " (Nearby) 💀"
+            st.header(name_line)
+
+            location_info = []
+            if p_profile.location and p_profile.location.name:
+                location_info.append(p_profile.location.name)
+            if p_profile.hometown:
+                # Check if hometown is a string or a model with a 'value' attribute
+                hometown_val = (
+                    p_profile.hometown.value
+                    if hasattr(p_profile.hometown, "value")
+                    else p_profile.hometown
+                )
+                if hometown_val:
+                    location_info.append(f"from {hometown_val}")
+            if location_info:
+                st.caption("📍 " + " | ".join(location_info))
         with col2:
             if st.button(
                 "Skip 💀",
@@ -143,19 +170,28 @@ def display_profile_card(  # noqa: C901
                     "Height", f"{p_profile.height} cm" if p_profile.height else None
                 )
                 show_attr("Relationship Type", p_profile.relationship_type_ids)
+                show_attr(
+                    "Dating Intention",
+                    p_profile.dating_intention,
+                    enum_map=DatingIntentionEnum,
+                )
+                show_attr("Dating Intention Text", p_profile.dating_intention_text)
                 show_attr("Children", p_profile.children, enum_map=ChildrenStatusEnum)
                 show_attr("Family Plans", p_profile.family_plans)
                 show_attr("Ethnicities", p_profile.ethnicities)
+                show_attr("Ethnicities Text", p_profile.ethnicities_text)
+                show_attr("Pets", p_profile.pets)
                 show_attr("Zodiac", p_profile.zodiac)
             with c2:
                 st.subheader("Virtues")
                 show_attr("Job Title", p_profile.job_title)
                 show_attr("Work", p_profile.works)
                 show_attr(
-                    "Education",
+                    "Education Attained",
                     p_profile.education_attained,
                     enum_map=EducationAttainedEnum,
                 )
+                show_attr("Education", p_profile.educations)
                 show_attr("Religion", p_profile.religions, enum_map=ReligionEnum)
                 show_attr("Politics", p_profile.politics, enum_map=PoliticsEnum)
                 show_attr("Languages", p_profile.languages_spoken)
