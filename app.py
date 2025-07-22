@@ -32,7 +32,7 @@ st.title("Welcome to the (Un)Hinge(d) Command Center 💀")
 
 if st.session_state.logged_in:
     log.info("User already logged in, switching to recommendations page.")
-    st.switch_page("pages/1_Recommendations.py")
+    st.switch_page("pages/recommendations.py")
 
 st.header("Load Session")
 session_files = find_session_files()
