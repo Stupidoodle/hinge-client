@@ -191,6 +191,7 @@ class QuestionId(str, Enum):
         }[self]
 
 
+@add_base_preferences
 class GenderPreferences(IntEnum):
     """Enum for gender preferences in user settings."""
 
