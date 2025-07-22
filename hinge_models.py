@@ -53,13 +53,13 @@ class BaseHingeModel(BaseModel):
 class ActiveHingeModel(BaseHingeModel):
     """Base model that can hold a client instance to perform actions."""
 
-    client: Any = Field(exclude=True)
+    client: Any = Field(default=None, exclude=True)
 
 
 class ContentHingeModel(ActiveHingeModel):
     """Base model for content-related actions that can a subject instance."""
 
-    subject: RecommendationSubject
+    subject: RecommendationSubject | None = None
 
 
 class ChildrenStatus(BaseHingeModel):
@@ -700,4 +700,4 @@ class ProfileContent(BaseHingeModel):
 class SelfContentResponse(BaseHingeModel):
     """Schema for the authenticated user's content data (GET /content/v2)."""
 
-    content: dict[str, list[PhotoContent | AnswerContent]]
+    content: ProfileContentContent
