@@ -12,7 +12,9 @@ For educational and research purposes only.
 Don't be a creep. Use your new powers for good (or at least for science).
 """
 
+from datetime import datetime, timezone
 from dotenv import load_dotenv
+from jose import jwt  # type: ignore
 from pydantic import BaseModel
 from typing import Any, Literal
 from uuid import UUID
@@ -60,12 +62,14 @@ class HingeClient:
     client: httpx.AsyncClient
     device_id: str
     hinge_token: str
+    hinge_token_expires: datetime
     identity_id: str
     installed: bool
     install_id: str
     phone_number: str
     recommendations: dict[str, RecommendationSubject]
     sendbird_jwt: str
+    sendbird_jwt_expires: datetime
     session_file: str
     session_id: str
     sendbird_session_key: str
@@ -115,6 +119,43 @@ class HingeClient:
                 self.sendbird_session_key = session_data.get(
                     "sendbird_session_key", ""
                 )
+                if session_data.get("hinge_token_expires"):
+                    self.hinge_token_expires = datetime.fromisoformat(
+                        session_data["hinge_token_expires"]
+                    )
+                else:
+                    log.warning(
+                        "No Hinge token expiration found, will need to re-authenticate."
+                    )
+                    self.hinge_token_expires = datetime.now(timezone.utc)
+
+                if session_data.get("sendbird_jwt_expires"):
+                    self.sendbird_jwt_expires = datetime.fromisoformat(
+                        session_data["sendbird_jwt_expires"]
+                    )
+                else:
+                    if self.sendbird_jwt:
+                        try:
+                            claims = jwt.get_unverified_claims(self.sendbird_jwt)
+                            exp_timestamp = claims.get("e", 0)
+                            self.sendbird_jwt_expires = datetime.fromtimestamp(
+                                exp_timestamp, tz=timezone.utc
+                            )
+
+                            self._save_session()
+                        except Exception as e:
+                            log.error(
+                                "Failed to parse Sendbird JWT expiration",
+                                error=str(e),
+                            )
+                            raise HingeAuthError(
+                                "Invalid Sendbird JWT format or missing expiration."
+                            ) from e
+                    else:
+                        log.warning(
+                            "No Sendbird JWT found, will need to re-authenticate."
+                        )
+                        self.sendbird_jwt_expires = datetime.now(timezone.utc)
             else:
                 log.warning(
                     "Session file exists but phone number does not match",
@@ -260,6 +301,7 @@ class HingeClient:
             auth_data = HingeAuthToken.model_validate(response.json())
             self.hinge_token = auth_data.token
             self.identity_id = auth_data.identity_id
+            self.hinge_token_expires = auth_data.expires
 
             log.info(
                 "Hinge authentication successful", auth_data=auth_data.model_dump()
@@ -298,6 +340,7 @@ class HingeClient:
             response.raise_for_status()
             sendbird_auth = SendbirdAuthToken.model_validate(response.json())
             self.sendbird_jwt = sendbird_auth.token
+            self.sendbird_jwt_expires = sendbird_auth.expires
 
             log.info(
                 "Sendbird authentication successful",
@@ -648,13 +691,15 @@ class HingeClient:
         subject: RecommendationSubject,
         content_item: PhotoContent | AnswerContent,
         comment: str | None = None,
+        use_superlike: bool = False,
     ) -> LikeResponse:
         """
 
         Args:
             subject (RecommendationSubject):
-            content_item ():
-            comment ():
+            content_item (PhotoContent | AnswerContent):
+            comment (str):
+            use_superlike (bool):
 
         Returns:
 
@@ -672,7 +717,7 @@ class HingeClient:
         elif isinstance(content_item, AnswerContent):
             rate_content = CreateRateContent(
                 prompt=CreateRateContentPrompt(
-                    answer=content_item.response,
+                    answer=content_item.response or "",
                     content_id=content_item.content_id,
                     question=content_item.question_id.prompt_text,
                 ),
@@ -688,6 +733,7 @@ class HingeClient:
             rating=rating_type,
             hcm_run_id=hcm_run_id,
             content=rate_content,
+            initiated_with="superlike" if use_superlike else "like",
         )
 
         log.info(
@@ -708,8 +754,12 @@ class HingeClient:
         """Create a session file with the current authentication state."""
         self.phone_number = self.phone_number
         self.device_id = str(uuid.uuid4()).upper()
+        self.installed = False  # Initially not installed
         self.install_id = str(uuid.uuid4()).upper()
         self.session_id = str(uuid.uuid4()).upper()
+        self.hinge_token = ""
+        self.hinge_token_expires = datetime.now(timezone.utc)
+        self.sendbird_jwt_expires = datetime.now(timezone.utc)
 
         with open(self.session_file, "w") as f:
             json.dump(
@@ -735,9 +785,11 @@ class HingeClient:
             "install_id": self.install_id,
             "session_id": self.session_id,
             "hinge_token": self.hinge_token,
+            "hinge_token_expires": self.hinge_token_expires.isoformat(),
             "identity_id": self.identity_id,
             "sendbird_jwt": self.sendbird_jwt,
             "sendbird_session_key": self.sendbird_session_key,
+            "sendbird_jwt_expires": self.sendbird_jwt_expires.isoformat(),
         }
         with open(self.session_file, "w") as f:
             json.dump(session_data, f)
@@ -798,6 +850,58 @@ class HingeClient:
         else:
             log.warning(f"Subject ID {subject_id} not found in recommendations.")
 
+    async def is_session_valid(self) -> bool:
+        """Check if the current session is still valid.
+
+        Returns:
+            bool: True if the session is valid, False otherwise.
+
+        """
+        if not self.hinge_token:
+            log.warning("Hinge token is empty, session is invalid.")
+            return False
+
+        if not self.sendbird_jwt:
+            log.warning("Sendbird JWT is empty, reauthenticating...")
+            await self._authenticate_with_sendbird()
+
+            if not self.sendbird_jwt:
+                log.error(
+                    "Failed to reauthenticate with Sendbird, session is invalid."
+                )
+                return False
+
+        now_utc = datetime.now(timezone.utc)
+
+        hinge_token_valid = False
+        
+        if self.hinge_token_expires:
+            hinge_token_valid = self.hinge_token_expires > now_utc
+        
+        sendbird_token_valid = False
+        
+        if self.sendbird_jwt_expires:
+            sendbird_token_valid = self.sendbird_jwt_expires > now_utc
+            
+            if not sendbird_token_valid:
+                log.warning("Sendbird JWT has expired, reauthenticating...")
+                await self._authenticate_with_sendbird()
+                
+                if not self.sendbird_jwt:
+                    log.error(
+                        "Failed to reauthenticate with Sendbird, session is invalid."
+                    )
+                    return False
+        
+        is_valid = hinge_token_valid and sendbird_token_valid
+        log.info(
+            "Session validity check",
+            is_valid=is_valid,
+            hinge_token_valid=hinge_token_valid,
+            sendbird_token_valid=sendbird_token_valid,
+        )
+        
+        return is_valid
 
 async def main() -> None:
     """Run the (Un)Hinge(d)Client.
