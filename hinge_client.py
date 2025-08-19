@@ -936,6 +936,11 @@ async def main() -> None:
 
     Don't run this without reading the code, you absolute degenerate. 😈
     """
+    log.warning(
+        "I never tested this function, so it might not work as expected. "
+        "Use at your own risk. 😈"
+    )
+
     load_dotenv()
     phone_number = os.getenv("HINGE_PHONE_NUMBER")
 
