@@ -731,9 +731,9 @@ class HingeClient:
                     text=comment, receiver_id=subject.subject_id
                 )
 
-            if hasattr(content_item, "cdn_id"):
+            if isinstance(content_item, PhotoContent):
                 rate_content = CreateRateContent(photo=content_item, comment=comment)
-            elif hasattr(content_item, "response"):
+            elif isinstance(content_item, AnswerContent):
                 rate_content = CreateRateContent(
                     prompt=CreateRateContentPrompt(
                         answer=content_item.response or "",
