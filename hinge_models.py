@@ -53,13 +53,13 @@ class BaseHingeModel(BaseModel):
 class ActiveHingeModel(BaseHingeModel):
     """Base model that can hold a client instance to perform actions."""
 
-    client: Any = Field(default=None, exclude=True)
+    client: Any = Field(exclude=True)
 
 
 class ContentHingeModel(ActiveHingeModel):
     """Base model for content-related actions that can a subject instance."""
 
-    subject: RecommendationSubject | None = None
+    subject: RecommendationSubject
 
 
 class ChildrenStatus(BaseHingeModel):
