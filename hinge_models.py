@@ -12,7 +12,6 @@ from pydantic import (
     Field,
     field_validator,
     model_validator,
-    UUID4,
 )
 from pydantic.alias_generators import to_camel
 from typing import Any, Literal, TYPE_CHECKING
