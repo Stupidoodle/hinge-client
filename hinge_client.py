@@ -25,7 +25,7 @@ import uuid
 import websockets
 
 from config import Settings, get_settings
-from hinge_error import HingeAuthError
+from hinge_error import HingeAuthError, HingeEmail2FAError
 from hinge_models import (
     AnswerContent,
     AnswerContentPayload,
@@ -294,8 +294,30 @@ class HingeClient:
             response = await self.client.post(
                 "/auth/sms/v2", json=payload, headers=headers
             )
-            log.info(response.text)
-            log.info(str(response))
+            log.debug(response.text)
+
+            if response.status_code == 412:
+                try:
+                    error_data = response.json()
+                    case_id = error_data.get("caseId")
+                    email = error_data.get("email")
+
+                    if case_id and email:
+                        log.info(
+                            "Email 2FA required",
+                            case_id=case_id,
+                            email=email,
+                        )
+                        raise HingeEmail2FAError(case_id=case_id, email=email)
+                    else:
+                        raise HingeAuthError(
+                            f"Unexpected 412 response format: {response.text}"
+                        )
+                except (ValueError, KeyError) as e:
+                    raise HingeAuthError(
+                        f"Failed to parse 412 response: {response.text}"
+                    ) from e
+
             response.raise_for_status()
             auth_data = HingeAuthToken.model_validate(response.json())
             self.hinge_token = auth_data.token
@@ -309,6 +331,9 @@ class HingeClient:
             self._save_session()
 
             await self._authenticate_with_sendbird()
+        except HingeEmail2FAError:
+            # Re-raise so caller can handle it
+            raise
         except (httpx.HTTPStatusError, ValueError) as e:
             error_text = (
                 e.response.text if isinstance(e, httpx.HTTPStatusError) else str(e)
@@ -319,6 +344,63 @@ class HingeClient:
                 error_text=error_text,
             )
             raise HingeAuthError(f"OTP submission failed: {error_text}") from e
+
+    async def submit_email_code(self, email_code: str, case_id: str) -> None:
+        """Submit the email verification code to complete login.
+
+        Args:
+            email_code (str): The verification code received via email.
+            case_id (str): The case ID from the initial 412 response.
+
+        Raises:
+            HingeAuthError: If the email code is invalid or validation fails.
+
+        """
+        log.info(
+            "Submitting email verification code",
+            phone_number=self.phone_number,
+            email_code=email_code,
+            case_id=case_id,
+        )
+        headers = self._get_default_headers()
+
+        payload = {
+            "installId": self.install_id,
+            "code": email_code,
+            "caseId": case_id,
+            "deviceId": self.device_id,
+        }
+
+        try:
+            response = await self.client.post(
+                "/auth/device/validate",
+                json=payload,
+                headers=headers,
+            )
+            response.raise_for_status()
+
+            auth_data = HingeAuthToken.model_validate(response.json())
+            self.hinge_token = auth_data.token
+            self.identity_id = auth_data.identity_id
+            self.hinge_token_expires = auth_data.expires
+
+            log.info(
+                "Hinge authentication successful with email code",
+                auth_data=auth_data.model_dump(),
+            )
+
+            self._save_session()
+            await self._authenticate_with_sendbird()
+        except (httpx.HTTPStatusError, ValueError) as e:
+            error_text = (
+                e.response.text if isinstance(e, httpx.HTTPStatusError) else str(e)
+            )
+            log.error(
+                "Failed to submit email code",
+                phone_number=self.phone_number,
+                error_text=error_text,
+            )
+            raise HingeAuthError(f"Email code submission failed: {error_text}") from e
 
     async def _authenticate_with_sendbird(self) -> None:
         """Use the Hinge token to get a Sendbird JWT and session key.
