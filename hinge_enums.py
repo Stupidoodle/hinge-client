@@ -1,9 +1,10 @@
 """Enums used in the Hinge API."""
 
 from enum import Enum, IntEnum
+from pydantic_core import CoreSchema, core_schema
 from typing import Type
 
-from pydantic_core import CoreSchema, core_schema
+from hinge_prompts_manager import HingePromptsManager
 
 
 def add_base_preferences(cls: Type[IntEnum]):
@@ -189,6 +190,110 @@ class QuestionId(str, Enum):
             self.WE_ARE_SAME_WEIRD: "We're the same type of weird if",
             self.UNKNOWN: "Unknown Question",
         }[self]
+
+    @classmethod
+    def get_dynamic_prompt_text(
+        cls, question_id: str, prompts_manager: HingePromptsManager | None = None
+    ) -> str:
+        """Get the dynamic prompt text based on the question ID."""
+        if prompts_manager:
+            return prompts_manager.get_prompt_display_text(prompt_id=question_id)
+
+        # Fallback to static mapping
+        try:
+            return cls(question_id).prompt_text
+        except ValueError:
+            print(
+                f"Warning: Invalid question ID '{question_id}'. "
+                f"Defaulting to 'Unknown Question'."
+            )
+            return "Unknown Question"
+
+    @classmethod
+    def get_all_available_prompts(cls, prompts_manager=None) -> dict:
+        """Get all available prompts as a dict of id -> text."""
+        if prompts_manager:
+            return {
+                prompt.id: prompt.prompt
+                for prompt in prompts_manager.prompts_data.prompts
+            }
+
+        # Fallback to static prompts
+        return {
+            member.value: member.prompt_text for member in cls if member != cls.UNKNOWN
+        }
+
+
+class DynamicQuestionId:
+    """Helper class that combines static enum with dynamic prompts."""
+
+    prompts_manager: HingePromptsManager
+    _id_to_prompt_cache: dict[str, str]
+    _prompt_to_id_cache: dict[str, str]
+
+    def __init__(self, prompts_manager: HingePromptsManager):
+        """Initialize the DynamicQuestionId with a prompt manager.
+
+        Args:
+            prompts_manager (HingePromptsManager): Manager for handling dynamic prompts.
+
+        """
+        self.prompts_manager = prompts_manager
+        self._id_to_prompt_cache = {}
+        self._prompt_to_id_cache = {}
+
+        self._build_caches()
+
+    def _build_caches(self) -> None:
+        """Build caches for quick lookup of prompts by ID and vice versa."""
+        for prompt in self.prompts_manager.prompts_data.prompts:
+            self._id_to_prompt_cache[prompt.id] = prompt.prompt
+            self._prompt_to_id_cache[prompt.prompt.lower()] = prompt.id
+
+    def get_prompt_text(self, question_id: str) -> str:
+        """Get the prompt text for a given question ID."""
+        if question_id in self._id_to_prompt_cache:
+            return self._id_to_prompt_cache[question_id]
+
+        return QuestionId.get_dynamic_prompt_text(question_id, self.prompts_manager)
+
+    def find_prompt_id(self, prompt_text: str) -> str | None:
+        """Find the question ID for a given prompt text (fuzzy matching)."""
+        prompt_text_lower = prompt_text.lower()
+
+        if prompt_text_lower in self._prompt_to_id_cache:
+            return self._prompt_to_id_cache[prompt_text_lower]
+
+        for cached_prompt, prompt_id in self._prompt_to_id_cache.items():
+            if (
+                prompt_text_lower in cached_prompt
+                or cached_prompt in prompt_text_lower
+            ):
+                return prompt_id
+
+        return None
+
+    def get_all_prompts(self) -> dict[str, str]:
+        """Get all available prompts."""
+        return self._id_to_prompt_cache.copy()
+
+    def search_prompts(self, query: str) -> dict[str, str]:
+        """Search prompts by text content."""
+        if not self.prompts_manager:
+            return {}
+
+        matching_prompts = self.prompts_manager.search_prompts(query)
+        return {prompt.id: prompt.prompt for prompt in matching_prompts}
+
+
+class ContentType(str, Enum):
+    """Supported content types for prompts."""
+
+    MEDIA = "media"
+    VOICE = "voice"
+    VIDEO = "video"
+    TEXT = "text"
+    POLL = "poll"
 
 
 @add_base_preferences

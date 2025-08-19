@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from hinge_enums import (
     ChildrenStatusEnum,
+    ContentType,
     DatingIntentionEnum,
     DrinkingStatusEnum,
     DrugStatusEnum,
@@ -672,6 +673,27 @@ class AnswerContent(ContentHingeModel, TranscriptionMetadata):
         return v
 
 
+class Prompt(BaseHingeModel):
+    """Schema for an individual prompt."""
+
+    id: str
+    prompt: str
+    is_selectable: bool
+    placeholder: str = ""
+    is_new: bool
+    categories: list[str] = []
+    content_types: list[ContentType] = []
+
+
+class PromptCategory(BaseHingeModel):
+    """Schema for prompt category metadata."""
+
+    name: str  # e.g. "Self-care", "Story time", etc.
+    slug: str  # e.g. "self-care", "storytime", etc.
+    is_visible: bool
+    is_new: bool
+
+
 class PromptContent(BaseHingeModel):
     """Schema for a user's prompt content."""
 
@@ -679,6 +701,13 @@ class PromptContent(BaseHingeModel):
     question_id: QuestionId
     options: list[str]
     selected_option_index: int | None = None
+
+
+class PromptsResponse(BaseHingeModel):
+    """Schema for the full prompts API response."""
+
+    prompts: list[Prompt]
+    categories: list[PromptCategory]
 
 
 class ProfileContentContent(BaseHingeModel):

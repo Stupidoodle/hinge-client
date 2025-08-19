@@ -38,6 +38,7 @@ from hinge_models import (
     PhotoContent,
     Preferences,
     ProfileContent,
+    PromptsResponse,
     RecommendationSubject,
     RecommendationsResponse,
     SelfContentResponse,
@@ -45,6 +46,7 @@ from hinge_models import (
     SendbirdAuthToken,
     UserProfile,
 )
+from hinge_prompts_manager import HingePromptsManager
 from logging_config import logger as log
 
 
@@ -66,6 +68,7 @@ class HingeClient:
     installed: bool
     install_id: str
     phone_number: str
+    prompts_manager: HingePromptsManager | None
     recommendations: dict[str, RecommendationSubject]
     sendbird_jwt: str
     sendbird_jwt_expires: datetime
@@ -80,6 +83,7 @@ class HingeClient:
         client: httpx.AsyncClient | None = None,
         settings: Settings | None = None,
         session_file: str = "session.json",
+        prompts_cache_file="prompts_cache.json",
     ) -> None:
         """Initialize the HingeClient with phone number and settings.
 
@@ -88,10 +92,12 @@ class HingeClient:
             client (httpx.AsyncClient | None): Optional HTTP client to use.
             settings (Settings | None): Optional settings for the client.
             session_file (str): Name of the file to store session data.
+            prompts_cache_file (str): Name of the file to cache prompts data.
 
         """
         self.phone_number = phone_number
         self.session_file = session_file
+        self.prompts_cache_file = prompts_cache_file
 
         if os.path.exists(session_file):
             with open(session_file, "r") as f:
@@ -463,6 +469,56 @@ class HingeClient:
                 error=str(e),
             )
             raise HingeAuthError(f"Failed to authenticate with Sendbird: {e}") from e
+
+    async def fetch_prompts(self, force_refresh: bool = False) -> HingePromptsManager:
+        """Feh prompts from the API or cache.
+
+        Args:
+            force_refresh (bool): If True, bypass cache and fetch fresh data.
+
+        Returns:
+            HingePromptsManager: The manager instance with loaded prompts data.
+
+        """
+        if not force_refresh and self.prompts_manager is None:
+            self.prompts_manager = self._load_prompts_from_cache()
+
+        if self.prompts_manager is not None and not force_refresh:
+            log.info("Using cached prompts data")
+            return self.prompts_manager
+
+        log.info("Fetching prompts from API")
+
+        try:
+            response = await self.client.get(
+                "/prompts", headers=self._get_default_headers()
+            )
+            response.raise_for_status()
+
+            prompts_data = PromptsResponse.model_validate(response.json())
+            self.prompts_manager = HingePromptsManager(prompts_data)
+
+            self._save_prompts_to_cache(prompts_data)
+
+            log.info(
+                "Prompts fetched successfully",
+                total_prompts=len(prompts_data.prompts),
+                total_categories=len(prompts_data.categories),
+            )
+
+            return self.prompts_manager
+        except Exception as e:
+            log.error("Failed to fetch prompts", error=str(e))
+
+            if self.prompts_manager is None:
+                self.prompts_manager = self._load_prompts_from_cache()
+
+            if self.prompts_manager is None:
+                raise HingeAuthError(
+                    "Failed to fetch prompts and no cache available"
+                ) from e
+
+            return self.prompts_manager
 
     async def get_recommendations(self) -> RecommendationsResponse:
         """Fetch the main feed of recommended profiles.
@@ -931,6 +987,88 @@ class HingeClient:
                 "Failed to load recommendations file, creating a new one.", exc_info=e
             )
             self.recommendations = {}  # Reset on failure
+
+    def _load_prompts_from_cache(self) -> HingePromptsManager | None:
+        """Load prompts from cached JSON file.
+
+        Returns:
+            HingePromptsManager | None: The prompts manager if cache exists,
+            None otherwise.
+
+        """
+        if not os.path.exists(self.prompts_cache_file):
+            log.info("No prompts cache file found, returning None")
+            return None
+
+        try:
+            with open(self.prompts_cache_file, "r") as f:
+                cache_data = json.load(f)
+
+            prompts_data = PromptsResponse.model_validate(cache_data)
+            log.info(
+                "Loaded prompts from cache",
+                total_prompts=len(prompts_data.prompts),
+                total_categories=len(prompts_data.categories),
+            )
+
+            return HingePromptsManager(prompts_data)
+        except Exception as e:
+            log.error(
+                "Failed to load prompts from cache, returning None",
+                error=str(e),
+            )
+            return None
+
+    def _save_prompts_to_cache(self, prompts_data: PromptsResponse) -> None:
+        """Save prompts data to cache file.
+
+        Args:
+            prompts_data (PromptsResponse): The prompts data to save.
+
+        """
+        try:
+            with open(self.prompts_cache_file, "w") as f:
+                json.dump(prompts_data.model_dump(by_alias=True), f, indent=2)
+
+            log.info(
+                "Saved prompts to cache",
+                total_prompts=len(prompts_data.prompts),
+                total_categories=len(prompts_data.categories),
+            )
+        except Exception as e:
+            log.error(
+                "Failed to save prompts to cache",
+                error=str(e),
+            )
+
+    # Convenience methods for backwards compatibility
+
+    async def get_prompt_text(self, prompt_id: str) -> str:
+        """Get prompt text by ID (backwards compatibility)."""
+        if self.prompts_manager is None:
+            raise HingeAuthError(
+                "Prompts manager is not loaded. Call fetch_prompts()."
+            )
+
+        return self.prompts_manager.get_prompt_display_text(prompt_id)
+
+    async def search_prompts(self, query: str) -> list:
+        """Search prompts by text."""
+        if self.prompts_manager is None:
+            raise HingeAuthError(
+                "Prompts manager is not loaded. Call fetch_prompts()."
+            )
+
+        return self.prompts_manager.search_prompts(query)
+
+    async def get_prompts_by_category(self, category_slug: str) -> list:
+        """Get prompts by category slug."""
+        if self.prompts_manager is None:
+            raise HingeAuthError(
+                "Prompts manager is not loaded. Call fetch_prompts()."
+            )
+
+        return self.prompts_manager.get_prompts_by_category(category_slug)
 
     def _save_recommendations(self) -> None:
         """Save the current recommendations to a file."""
