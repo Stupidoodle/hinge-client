@@ -1,10 +1,12 @@
 """Enums used in the Hinge API."""
 
+from __future__ import annotations
 from enum import Enum, IntEnum
 from pydantic_core import CoreSchema, core_schema
-from typing import Type
+from typing import Type, TYPE_CHECKING
 
-from hinge_prompts_manager import HingePromptsManager
+if TYPE_CHECKING:
+    from hinge_prompts_manager import HingePromptsManager
 
 
 def add_base_preferences(cls: Type[IntEnum]):
