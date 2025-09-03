@@ -15,7 +15,6 @@ Don't be a creep. Use your new powers for good (or at least for science).
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from jose import jwt  # type: ignore
-from pydantic import BaseModel
 from typing import Any, Literal
 import asyncio
 import httpx
@@ -191,6 +190,7 @@ class HingeClient:
             "X-Device-Model": "unknown",
             "X-Device-Region": "FR",
         }
+        self.prompts_manager = self._load_prompts_from_cache()
 
     def _get_default_headers(self) -> dict[str, str]:
         """Construct the default headers requires for most Hinge API requests.
@@ -471,7 +471,7 @@ class HingeClient:
             raise HingeAuthError(f"Failed to authenticate with Sendbird: {e}") from e
 
     async def fetch_prompts(self, force_refresh: bool = False) -> HingePromptsManager:
-        """Feh prompts from the API or cache.
+        """Fetch prompts from the API or cache.
 
         Args:
             force_refresh (bool): If True, bypass cache and fetch fresh data.
@@ -489,9 +489,13 @@ class HingeClient:
 
         log.info("Fetching prompts from API")
 
+        payload = await self.prompt_payload()
+
         try:
-            response = await self.client.get(
-                "/prompts", headers=self._get_default_headers()
+            response = await self.client.post(
+                "/prompts",
+                headers=self._get_default_headers(),
+                json=payload,
             )
             response.raise_for_status()
 
@@ -1149,6 +1153,108 @@ class HingeClient:
         )
 
         return is_valid
+
+    async def prompt_payload(self) -> dict[str, Any]:
+        """Get the payload structure for fetching prompts.
+
+        Returns:
+            dict[str, Any]: The payload for the prompts API.
+
+        """
+        if not await self.is_session_valid():
+            raise HingeAuthError("Session is not valid. Please authenticate first.")
+
+        preferences = await self.get_self_preferences()
+        profile = await self.get_self_profile()
+
+        preferences_dict = preferences.model_dump(
+            by_alias=True, exclude_none=True, serialize_as_any=True, mode="json"
+        )
+
+        selected = [str(g) for g in preferences_dict.get("genderPreferences", [])]
+
+        def keep_selected(d: Any) -> Any:
+            if isinstance(d, dict) and selected:
+                return {k: v for k, v in d.items() if k in selected}
+
+            return d
+
+        for key in ("genderedHeightRanges", "genderedAgeRanges"):
+            if key in preferences_dict:
+                preferences_dict[key] = keep_selected(preferences_dict[key])
+
+        if "dealbreakers" in preferences_dict:
+            db = preferences_dict["dealbreakers"]
+
+            for key in ("genderedHeight", "genderedAge"):
+                if key in db:
+                    db[key] = keep_selected(db[key])
+
+            preferences_dict["dealbreakers"] = db
+
+        profile_dict = profile.profile.model_dump(
+            by_alias=True, exclude_none=True, serialize_as_any=True, mode="json"
+        )
+
+        def unwrap(obj: Any) -> Any:
+            if isinstance(obj, dict) and "value" in obj and "visible" in obj:
+                return unwrap(obj["value"])
+            if isinstance(obj, list):
+                return [unwrap(x) for x in obj]
+            if isinstance(obj, dict):
+                return {k: unwrap(v) for k, v in obj.items()}
+            return obj
+
+        p = unwrap(profile_dict)
+
+        loc_name = (profile_dict.get("location") or {}).get("name")
+
+        profile_payload = {
+            "works": (
+                [p.get("works")]
+                if isinstance(p.get("works"), str)
+                else p.get("works", [])
+            ),
+            "sexualOrientations": p.get("sexualOrientations", []),
+            "didJustJoin": False,
+            "smoking": p.get("smoking"),
+            "selfieVerified": p.get("selfieVerified", False),
+            "politics": p.get("politics"),
+            "relationshipTypesText": p.get("relationshipTypesText", ""),
+            "datingIntention": p.get("datingIntention"),
+            "height": p.get("height"),
+            "children": p.get("children"),
+            "matchNote": p.get("matchNote", ""),
+            "religions": p.get("religions", []),
+            "relationshipTypes": p.get("relationshipTypeIds", []),  # rename
+            "educations": p.get("educations", []),
+            "age": p.get("age"),
+            "jobTitle": p.get("jobTitle"),
+            "birthday": p.get("birthday"),
+            "drugs": p.get("drugs"),
+            "content": {},  # expected container in your example
+            "hometown": p.get("hometown"),
+            "firstName": p.get("firstName"),
+            "familyPlans": p.get("familyPlans"),
+            "location": {"name": loc_name} if loc_name is not None else {"name": None},
+            "marijuana": p.get("marijuana"),
+            "pets": p.get("pets", []),
+            "datingIntentionText": p.get("datingIntentionText", ""),
+            "educationAttained": p.get("educationAttained"),
+            "ethnicities": p.get("ethnicities", []),
+            "pronouns": p.get("pronouns", []),
+            "languagesSpoken": p.get("languagesSpoken", []),
+            "lastName": p.get("lastName", ""),
+            "ethnicitiesText": p.get("ethnicitiesText", ""),
+            "drinking": p.get("drinking"),
+            "userId": profile.user_id,  # hoist from outer response
+            "genderIdentityId": p.get("genderIdentityId"),
+        }
+
+        return {
+            "preferences": preferences_dict,
+            "profile": profile_payload,
+        }
 
 
 async def main() -> None:
