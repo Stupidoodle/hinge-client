@@ -441,16 +441,16 @@ class HingeClient:
             extra_headers = {"SENDBIRD-WS-TOKEN": self.sendbird_jwt}
 
             async with websockets.connect(
-                ws_uri, extra_headers=extra_headers
+                ws_uri, additional_headers=extra_headers
             ) as websocket:
                 ws_response = await websocket.recv()
                 # The first message is a LOGI payload with the session key
                 if isinstance(ws_response, str) and ws_response.startswith("LOGI"):
-                    logi_data = BaseModel.model_validate_json(ws_response[4:])
-                    self.sendbird_session_key = logi_data.key  # type: ignore
+                    logi_data = json.loads(ws_response[4:])
+                    self.sendbird_session_key = logi_data["key"]  # type: ignore
                     log.info(
                         "Sendbird session key established",
-                        sendbird_session_key=self.sendbird_session_key,
+                        sendbird_session_key=self.sendbird_session_key[:6] + "...",
                     )
                 else:
                     raise HingeAuthError(
