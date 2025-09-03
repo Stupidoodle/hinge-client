@@ -406,13 +406,19 @@ class Profile(BaseHingeModel):
     age: int | None = None  # Added from /user/v3
     birthday: datetime | None = None  # Added from /user/v3
     covid_vax: int | None = None
-    children: ChildrenStatus | ChildrenStatusEnum | None = None  # Using new Enum
-    dating_intention: DatingIntention | ChildrenStatusEnum | None = (
-        None  # Using new Enum
-    )
+    children: ChildrenStatus | ChildrenStatusEnum | None = Field(
+        union_mode="left_to_right"
+    )  # Using new Enum
+    dating_intention: DatingIntention | DatingIntentionEnum | None = Field(
+        union_mode="left_to_right"
+    )  # Using new Enum
     dating_intention_text: str | None = None
-    drinking: DrinkingStatus | DrinkingStatusEnum | None = None  # Using new Enum
-    drugs: DrugStatus | DrugStatusEnum | None = None  # Using new Enum
+    drinking: DrinkingStatus | DrinkingStatusEnum | None = Field(
+        union_mode="left_to_right"
+    )  # Using new Enum
+    drugs: DrugStatus | DrugStatusEnum | None = Field(
+        union_mode="left_to_right"
+    )  # Using new Enum
     education_attained: EducationAttainedEnum | None = None  # Added from /user/v3
     educations: Educations | list[str] | None = None
     ethnicities: Ethnicities | list[EthnicitiesEnum] | None = None
@@ -432,18 +438,24 @@ class Profile(BaseHingeModel):
     last_name: str | None = None
     location: Location
     match_note: str | None = None  # Added from /user/v3
-    marijuana: MarijuanaStatus | MarijuanaStatusEnum | None = None  # Using new Enum
+    marijuana: MarijuanaStatus | MarijuanaStatusEnum | None = Field(
+        union_mode="left_to_right"
+    )  # Using new Enum
     pets: Pets | list[int] | None = None
-    politics: Politics | PoliticsEnum | None = None
+    politics: Politics | PoliticsEnum | None = Field(union_mode="left_to_right")
     pronouns: list[int] | None = None
     relationship_type_ids: RelationshipType | list[RelationshipTypeEnum] | None = (
         None  # Using new Enum
     )
     relationship_types_text: str | None = None
-    religions: Religion | ReligionEnum | None = None  # Using new Enum
+    religions: Religion | ReligionEnum | None = Field(
+        union_mode="left_to_right"
+    )  # Using new Enum
     selfie_verified: bool | None = None
     sexual_orientations: SexualOrientation | list[int] | None = None
-    smoking: SmokingStatus | SmokingStatusEnum | None = None
+    smoking: SmokingStatus | SmokingStatusEnum | None = Field(
+        union_mode="left_to_right"
+    )
     works: Works | str | None = None
     zodiac: int | None = None  # Added from /user/v3
     last_active_status_id: int | None = None
