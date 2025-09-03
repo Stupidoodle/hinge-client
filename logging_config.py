@@ -2,11 +2,16 @@
 
 import logging
 import structlog
+from config import get_settings
 
+settings = get_settings()
+
+# Set logging level based on DEBUG setting
+log_level = logging.DEBUG if settings.DEBUG else logging.INFO
 
 logging.basicConfig(
     format="%(message)s",
-    level=logging.INFO,
+    level=log_level,
 )
 
 processors = [
@@ -23,7 +28,7 @@ processors = [
 ]
 
 structlog.configure(
-    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+    wrapper_class=structlog.make_filtering_bound_logger(log_level),
     processors=processors,  # type: ignore
 )
 

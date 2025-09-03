@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     HINGE_APP_VERSION: str = "9.82.0"
     HINGE_BUILD_NUMBER: str = "11616"
     OS_VERSION: str = "26.0"
+    
+    # Debug configuration
+    DEBUG: bool = True
 
 
 @lru_cache()
