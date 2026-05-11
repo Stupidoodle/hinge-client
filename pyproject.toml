@@ -9,6 +9,7 @@ requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.18.4",
     "certifi>=2026.4.22",
+    "fastapi>=0.136.1",
     "httpx>=0.28.1",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
@@ -16,6 +17,7 @@ dependencies = [
     "python-jose>=3.5.0",
     "sqlalchemy>=2.0.49",
     "structlog>=25.5.0",
+    "uvicorn>=0.46.0",
     "websockets>=16.0",
 ]
 
@@ -43,7 +45,13 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "C", "D", "B", "I", "Q"]
-ignore = ["E203", "D203", "D213", "I001"]
+ignore = [
+    "E203",  # whitespace before ':' (conflicts with formatter)
+    "D203",
+    "D213",
+    "I001",
+    "B008",  # FastAPI Depends() in defaults is the idiomatic pattern
+]
 fixable = ["E", "I"]
 
 [tool.ruff.lint.per-file-ignores]
