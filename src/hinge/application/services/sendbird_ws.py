@@ -7,12 +7,35 @@ callback supplied at construction.
 
 import asyncio
 import json
+import ssl
 import time
 
+import certifi
 import websockets
 from websockets.asyncio.client import ClientConnection
 
 from hinge.core.logging_config import logger as log
+
+
+def _build_ssl_context() -> ssl.SSLContext:
+    """Build an SSL context backed by certifi's CA bundle.
+
+    macOS Pythons sometimes ship with an out-of-date Apple CA store that
+    rejects Sendbird's chain (issue #4: CERTIFICATE_VERIFY_FAILED). Pinning
+    to certifi gives a reproducible, up-to-date trust anchor.
+    """
+    return ssl.create_default_context(cafile=certifi.where())
+
+
+_SSL_CONTEXT: ssl.SSLContext | None = None
+
+
+def _get_ssl_context() -> ssl.SSLContext:
+    """Return the cached SSL context, building it on first call."""
+    global _SSL_CONTEXT
+    if _SSL_CONTEXT is None:
+        _SSL_CONTEXT = _build_ssl_context()
+    return _SSL_CONTEXT
 
 # Sendbird app
 SENDBIRD_APP_ID = "3CDAD91C-1E0D-4A0D-BBEE-9671988BF9E9"
@@ -160,6 +183,7 @@ class SendbirdWsBridge:
         async with websockets.connect(
             uri,
             additional_headers=headers,
+            ssl=_get_ssl_context(),
             ping_interval=None,
             ping_timeout=None,
         ) as ws:
