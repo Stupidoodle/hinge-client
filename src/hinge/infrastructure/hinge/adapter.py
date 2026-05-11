@@ -3,11 +3,12 @@
 import asyncio
 import json
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from hinge.core.logging_config import logger as log
 from hinge.client import HingeClient
+from hinge.core.logging_config import logger as log
 from hinge.domain.models.chat_channel import HingeChatChannel
 from hinge.domain.models.chat_message import HingeChatMessage
 from hinge.domain.models.like_limit import HingeLikeLimit
@@ -21,8 +22,10 @@ from hinge.domain.models.profile import (
     ProfileVideoDetail,
     ProfileVideoPrompt,
 )
+from hinge.domain.models.prompt import HingePrompt
 from hinge.domain.models.recommendation import Recommendation
 from hinge.domain.ports.hinge_api_port import HingeApiPort
+from hinge.domain.ports.unit_of_work import HingeUnitOfWorkPort
 from hinge.models import (
     CreateRate,
     CreateRateContent,
@@ -33,7 +36,6 @@ from hinge.models import (
     UserProfile,
     UserProfileV2,
 )
-from hinge.prompts_manager import HingePromptsManager
 
 # Rating origin mapping (internal):
 # Feed origins (compatibles, active_lately, nearby, new_here) → "discover"
@@ -344,22 +346,29 @@ def _v2_profile_to_domain(p: UserProfileV2) -> HingeProfile:
 
 def _resolve_question(
     q_id: str,
-    prompts_mgr: HingePromptsManager | None,
+    prompt_lookup: dict[str, str] | None,
 ) -> tuple[str, bool]:
-    """Resolve question text from prompts manager. Returns (text, resolved)."""
-    if not prompts_mgr:
+    """Resolve question text via the prompt-id → text lookup.
+
+    Returns ``(text, resolved)``. ``resolved`` is False when the lookup
+    is present but the id is unknown — the adapter then refreshes the
+    catalog and retries.
+    """
+    if prompt_lookup is None:
         return "", True
-    text = prompts_mgr.get_prompt_display_text(q_id)
-    return text, text != "Unknown Question"
+    text = prompt_lookup.get(q_id)
+    if text is None:
+        return "Unknown Question", False
+    return text, True
 
 
 def _answer_to_prompt(
     answer: Any,
-    prompts_mgr: HingePromptsManager | None,
+    prompt_lookup: dict[str, str] | None,
 ) -> tuple[ProfilePrompt, bool]:
     """Convert an AnswerContent to a ProfilePrompt. Returns (prompt, resolved)."""
     q_id = str(answer.question_id)
-    q_text, resolved = _resolve_question(q_id, prompts_mgr)
+    q_text, resolved = _resolve_question(q_id, prompt_lookup)
     content_type = answer.type or "text"
 
     audio_url = waveform = transcription = None
@@ -391,12 +400,12 @@ def _answer_to_prompt(
 
 def _resolve_optional_question(
     q_id: str | None,
-    prompts_mgr: HingePromptsManager | None,
+    prompt_lookup: dict[str, str] | None,
 ) -> tuple[str | None, str, bool]:
     """Resolve an optional question ID. Returns (q_id_str, text, resolved)."""
     if not q_id:
         return None, "", True
-    text, resolved = _resolve_question(q_id, prompts_mgr)
+    text, resolved = _resolve_question(q_id, prompt_lookup)
     return q_id, text, resolved
 
 
@@ -430,7 +439,7 @@ def _photo_to_domain(photo: Any) -> ProfilePhoto:
 def _reset_and_merge(
     profile: HingeProfile,
     content: ProfileContent,
-    prompts_mgr: HingePromptsManager | None,
+    prompt_lookup: dict[str, str] | None,
 ) -> bool:
     """Clear transient content fields, then merge fresh content."""
     profile.photos.clear()
@@ -439,13 +448,13 @@ def _reset_and_merge(
     profile.polls.clear()
     profile.video_prompt = None
     profile.date_ideas.clear()
-    return _merge_content_into_profile(profile, content, prompts_mgr)
+    return _merge_content_into_profile(profile, content, prompt_lookup)
 
 
 def _merge_content_into_profile(
     profile: HingeProfile,
     content: ProfileContent,
-    prompts_mgr: HingePromptsManager | None = None,
+    prompt_lookup: dict[str, str] | None = None,
 ) -> bool:
     """Merge all content types into a domain profile.
 
@@ -459,7 +468,7 @@ def _merge_content_into_profile(
         profile.photo_urls.append(photo.url)
 
     for answer in content.content.answers:
-        prompt, resolved = _answer_to_prompt(answer, prompts_mgr)
+        prompt, resolved = _answer_to_prompt(answer, prompt_lookup)
         profile.prompts.append(prompt)
         if not resolved:
             all_resolved = False
@@ -467,7 +476,7 @@ def _merge_content_into_profile(
     if content.content.prompt_poll:
         poll = content.content.prompt_poll
         poll_q_id = str(poll.question_id)
-        poll_q_text, resolved = _resolve_question(poll_q_id, prompts_mgr)
+        poll_q_text, resolved = _resolve_question(poll_q_id, prompt_lookup)
         if not resolved:
             all_resolved = False
         profile.polls.append(
@@ -484,7 +493,7 @@ def _merge_content_into_profile(
         vp = content.content.video_prompt
         q_id, q_text, resolved = _resolve_optional_question(
             str(vp.question_id) if vp.question_id else None,
-            prompts_mgr,
+            prompt_lookup,
         )
         if not resolved:
             all_resolved = False
@@ -501,7 +510,7 @@ def _merge_content_into_profile(
         di = content.content.date_idea
         q_id, q_text, resolved = _resolve_optional_question(
             str(di.question_id) if di.question_id else None,
-            prompts_mgr,
+            prompt_lookup,
         )
         if not resolved:
             all_resolved = False
@@ -520,24 +529,68 @@ def _merge_content_into_profile(
 class HingeApiAdapter(HingeApiPort):
     """Adapter that implements HingeApiPort using HingeClient."""
 
-    def __init__(self, client: HingeClient) -> None:
-        """Wrap a HingeClient instance."""
+    def __init__(
+        self,
+        client: HingeClient,
+        uow_factory: Callable[[], HingeUnitOfWorkPort] | None = None,
+    ) -> None:
+        """Wrap a HingeClient and the UoW factory.
+
+        ``uow_factory`` is required for prompts caching (DB-backed). It's
+        optional so unit tests of pure mapper helpers can construct an
+        adapter without standing up a DB.
+        """
         self._client = client
+        self._uow_factory = uow_factory
+        self._prompt_lookup: dict[str, str] | None = None
 
     async def _ensure_prompts(
         self,
         *,
         force: bool = False,
-    ) -> HingePromptsManager | None:
-        """Get prompts manager, lazy-fetching if needed."""
-        if not force and self._client.prompts_manager is not None:
-            return self._client.prompts_manager
+    ) -> dict[str, str] | None:
+        """Return ``{prompt_id: text}`` from DB (or API on miss / force).
+
+        First call: try the ``hinge_prompts`` table — if populated, build
+        an in-memory dict cache and return. Otherwise (or when forced)
+        hit Hinge's ``/prompts`` endpoint, persist via the repo, and
+        cache. Subsequent calls return the in-memory dict directly.
+        """
+        if not force and self._prompt_lookup is not None:
+            return self._prompt_lookup
+
+        if not force and self._uow_factory is not None:
+            with self._uow_factory() as uow:
+                stored = uow.prompts.list_all()
+                if stored:
+                    self._prompt_lookup = {p.prompt_id: p.text for p in stored}
+                    return self._prompt_lookup
+
         try:
-            return await self._client.fetch_prompts(
-                force_refresh=force,
-            )
-        except Exception:  # noqa: BLE001
+            response = await self._client.fetch_prompts()
+        except Exception:  # noqa: BLE001 — network/auth failures are non-fatal
             return None
+
+        prompts_domain = [
+            HingePrompt(
+                prompt_id=p.id,
+                text=p.prompt,
+                placeholder=p.placeholder,
+                is_selectable=p.is_selectable,
+                is_new=p.is_new,
+                categories=list(p.categories),
+                content_types=[str(c) for c in p.content_types],
+            )
+            for p in response.prompts
+        ]
+
+        if self._uow_factory is not None:
+            with self._uow_factory() as uow:
+                uow.prompts.bulk_upsert(prompts_domain)
+                uow.commit()
+
+        self._prompt_lookup = {p.prompt_id: p.text for p in prompts_domain}
+        return self._prompt_lookup
 
     async def get_recommendations(self) -> list[Recommendation]:
         """Fetch recommendation feed."""
@@ -583,7 +636,7 @@ class HingeApiAdapter(HingeApiPort):
         profiles_data = await self._client.get_profiles(subject_ids)
         content_data = await self._client.get_profile_content(subject_ids)
 
-        prompts_mgr = await self._ensure_prompts()
+        prompt_lookup = await self._ensure_prompts()
 
         result: dict[str, HingeProfile] = {}
         for p in profiles_data:
@@ -596,15 +649,15 @@ class HingeApiAdapter(HingeApiPort):
                 resolved = _merge_content_into_profile(
                     result[c.user_id],
                     c,
-                    prompts_mgr,
+                    prompt_lookup,
                 )
                 if not resolved:
                     has_unknown = True
 
         # Refresh cache and re-merge if any prompts were unknown
-        if has_unknown and prompts_mgr:
-            prompts_mgr = await self._ensure_prompts(force=True)
-            if prompts_mgr:
+        if has_unknown and prompt_lookup:
+            prompt_lookup = await self._ensure_prompts(force=True)
+            if prompt_lookup:
                 for c in content_data:
                     if c.user_id in result:
                         p = result[c.user_id]
@@ -614,7 +667,7 @@ class HingeApiAdapter(HingeApiPort):
                         p.photo_urls.clear()
                         p.video_prompt = None
                         p.date_ideas.clear()
-                        _merge_content_into_profile(p, c, prompts_mgr)
+                        _merge_content_into_profile(p, c, prompt_lookup)
                 log.info("prompts_cache_refreshed_on_miss")
 
         return result
@@ -632,7 +685,7 @@ class HingeApiAdapter(HingeApiPort):
         look up by whichever ID format they have.
         """
         log.debug("profiles_quick_fetching", count=len(subject_ids))
-        prompts_mgr = await self._ensure_prompts()
+        prompt_lookup = await self._ensure_prompts()
 
         result: dict[str, HingeProfile] = {}
         has_unknown = False
@@ -654,7 +707,7 @@ class HingeApiAdapter(HingeApiPort):
                     resolved = _merge_content_into_profile(
                         profile,
                         content,
-                        prompts_mgr,
+                        prompt_lookup,
                     )
                     if not resolved:
                         has_unknown = True
@@ -666,7 +719,7 @@ class HingeApiAdapter(HingeApiPort):
                 if abs_idx < len(subject_ids):
                     result[subject_ids[abs_idx]] = profile
 
-        if has_unknown and prompts_mgr:
+        if has_unknown and prompt_lookup:
             await self._retry_unknown_prompts(
                 [c for _, c in contents],
                 {p.subject_id: p for p, _ in contents},
@@ -685,19 +738,19 @@ class HingeApiAdapter(HingeApiPort):
         profile_map: dict[str, HingeProfile],
     ) -> None:
         """Re-merge content after refreshing the prompts cache."""
-        prompts_mgr = await self._ensure_prompts(force=True)
-        if prompts_mgr:
+        prompt_lookup = await self._ensure_prompts(force=True)
+        if prompt_lookup:
             for c in all_content:
                 profile = profile_map.get(c.user_id)
                 if profile:
-                    _reset_and_merge(profile, c, prompts_mgr)
+                    _reset_and_merge(profile, c, prompt_lookup)
             log.info("prompts_cache_refreshed_on_miss")
 
     async def _retry_missing_content(
         self,
         missing_ids: list[str],
         profile_map: dict[str, HingeProfile],
-        prompts_mgr: HingePromptsManager | None,
+        prompt_lookup: dict[str, str] | None,
         all_content: list[ProfileContent],
     ) -> bool:
         """Retry fetching content for profiles that returned nothing.
@@ -710,7 +763,7 @@ class HingeApiAdapter(HingeApiPort):
         for c in retry_data:
             profile = profile_map.get(c.user_id)
             if profile:
-                if not _reset_and_merge(profile, c, prompts_mgr):
+                if not _reset_and_merge(profile, c, prompt_lookup):
                     has_unknown = True
                 all_content.append(c)
         still_missing = len(missing_ids) - len(retry_data)
@@ -769,7 +822,7 @@ class HingeApiAdapter(HingeApiPort):
         if not profiles:
             return
 
-        prompts_mgr = await self._ensure_prompts()
+        prompt_lookup = await self._ensure_prompts()
 
         profile_map = {p.subject_id: p for p in profiles}
         all_ids = list(profile_map)
@@ -784,7 +837,7 @@ class HingeApiAdapter(HingeApiPort):
                 returned_ids.add(c.user_id)
                 profile = profile_map.get(c.user_id)
                 if profile:
-                    if not _reset_and_merge(profile, c, prompts_mgr):
+                    if not _reset_and_merge(profile, c, prompt_lookup):
                         has_unknown = True
                     all_content.append(c)
 
@@ -794,12 +847,12 @@ class HingeApiAdapter(HingeApiPort):
             if await self._retry_missing_content(
                 missing_ids,
                 profile_map,
-                prompts_mgr,
+                prompt_lookup,
                 all_content,
             ):
                 has_unknown = True
 
-        if has_unknown and prompts_mgr:
+        if has_unknown and prompt_lookup:
             await self._retry_unknown_prompts(all_content, profile_map)
 
     async def skip(

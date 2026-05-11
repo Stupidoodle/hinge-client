@@ -40,7 +40,6 @@ from hinge.models import (
     UserProfile,
     UserProfileV2,
 )
-from hinge.prompts_manager import HingePromptsManager
 
 # --- Constants ---
 
@@ -184,7 +183,6 @@ class HingeClient:
     installed: bool
     install_id: str
     phone_number: str
-    prompts_manager: HingePromptsManager | None
     recommendations: dict[str, RecommendationSubject]
     sendbird_jwt: str
     sendbird_jwt_expires: datetime
@@ -202,18 +200,15 @@ class HingeClient:
         self,
         phone_number: str,
         client: httpx.AsyncClient | None = None,
-        prompts_cache_file: str = "prompts_cache.json",
     ) -> None:
-        """Initialize the HingeClient with phone number.
+        """Initialize the HingeClient with a phone number.
 
         Args:
             phone_number: The phone number associated with the Hinge account.
             client: Optional HTTP client to use.
-            prompts_cache_file: Name of the file to cache prompts data.
 
         """
         self.phone_number = phone_number
-        self.prompts_cache_file = prompts_cache_file
         self.auth_state: str = self.AUTH_UNAUTHENTICATED
         self._pending_email_2fa: dict[str, str] | None = None  # {case_id, email}
         self.feed_exhausted: bool = False
@@ -245,7 +240,6 @@ class HingeClient:
             "X-Device-Model": "unknown",
             "X-Device-Region": "FR",
         }
-        self.prompts_manager = self._load_prompts_from_cache()
 
     def _get_default_headers(self) -> dict[str, str]:
         """Construct the default headers for most Hinge API requests."""
@@ -1017,11 +1011,12 @@ class HingeClient:
 
     # --- Prompts ---
 
-    async def fetch_prompts(self, force_refresh: bool = False) -> HingePromptsManager:
-        """Fetch prompts from the API or cache."""
-        if not force_refresh and self.prompts_manager is not None:
-            return self.prompts_manager
+    async def fetch_prompts(self) -> PromptsResponse:
+        """Hit ``POST /prompts`` and return the raw catalog response.
 
+        Caching is the application layer's concern (HingePromptsRepo via
+        the UoW) — this method always hits the API and never touches disk.
+        """
         payload = await self._prompt_payload()
 
         response = await self.client.post(
@@ -1031,10 +1026,7 @@ class HingeClient:
         )
         response.raise_for_status()
 
-        prompts_data = PromptsResponse.model_validate(response.json())
-        self.prompts_manager = HingePromptsManager(prompts_data)
-        self._save_prompts_to_cache(prompts_data)
-        return self.prompts_manager
+        return PromptsResponse.model_validate(response.json())
 
     async def _prompt_payload(self) -> dict[str, Any]:  # noqa: C901
         """Build the payload structure for fetching prompts."""
@@ -1570,23 +1562,3 @@ class HingeClient:
         if subject_id in self.recommendations:
             del self.recommendations[subject_id]
             self._save_recommendations()
-
-    def _load_prompts_from_cache(self) -> HingePromptsManager | None:
-        """Load prompts from cached JSON file."""
-        if not os.path.exists(self.prompts_cache_file):
-            return None
-        try:
-            with open(self.prompts_cache_file) as f:
-                cache_data = json.load(f)
-            prompts_data = PromptsResponse.model_validate(cache_data)
-            return HingePromptsManager(prompts_data)
-        except Exception:
-            return None
-
-    def _save_prompts_to_cache(self, prompts_data: PromptsResponse) -> None:
-        """Save prompts data to cache file."""
-        try:
-            with open(self.prompts_cache_file, "w") as f:
-                json.dump(prompts_data.model_dump(by_alias=True), f, indent=2)
-        except Exception:
-            log.warning("hinge_prompts_cache_save_failed", exc_info=True)

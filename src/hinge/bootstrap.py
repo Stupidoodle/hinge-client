@@ -23,7 +23,6 @@ from hinge.infrastructure.db.mappers import start_hinge_mappers
 from hinge.infrastructure.db.unit_of_work import HingeSqlAlchemyUnitOfWork
 from hinge.infrastructure.hinge.adapter import HingeApiAdapter
 from hinge.infrastructure.scoring.rule_based import HingeRuleBasedScorer
-from hinge.prompts_manager import HingePromptsManager
 
 
 @dataclass
@@ -45,19 +44,6 @@ class HingeContainer:
     def uow(self) -> HingeUnitOfWorkPort:
         """Return a new Unit of Work for a database transaction."""
         return HingeSqlAlchemyUnitOfWork(self._session_factory)
-
-    @property
-    def prompts_manager(self) -> HingePromptsManager | None:
-        """Return the prompts manager (loaded from cache or fetched)."""
-        return self._client.prompts_manager
-
-    async def ensure_prompts(self) -> HingePromptsManager | None:
-        """Lazy-fetch the prompt catalogue if missing and auth is fresh."""
-        if self._client.prompts_manager is not None:
-            return self._client.prompts_manager
-        if self._client.auth_state != HingeClient.AUTH_AUTHENTICATED:
-            return None
-        return await self._client.fetch_prompts()
 
 
 def build_session_factory(database_url: str) -> sessionmaker[Session]:
@@ -99,7 +85,12 @@ def bootstrap_hinge(
     effective_phone = phone_number or settings.HINGE_PHONE_NUMBER or ""
 
     client = HingeClient(phone_number=effective_phone)
-    hinge_api = HingeApiAdapter(client)
+
+    # Prompt catalog is DB-backed — adapter needs a UoW factory to read/write it.
+    def _uow_factory() -> HingeUnitOfWorkPort:
+        return HingeSqlAlchemyUnitOfWork(session_factory)
+
+    hinge_api = HingeApiAdapter(client, uow_factory=_uow_factory)
     scorer = HingeRuleBasedScorer()
     chat_sync = ChatSyncService(api=hinge_api, uow_factory=session_factory)
 
