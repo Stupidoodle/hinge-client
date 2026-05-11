@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from hinge.domain.ports.chat_repo import HingeChatRepo
 from hinge.domain.ports.decision_repo import HingeDecisionRepo
 from hinge.domain.ports.profile_repo import HingeProfileRepo
+from hinge.domain.ports.prompts_repo import HingePromptsRepo
 from hinge.domain.ports.session_repo import HingeSessionRepo
 
 
@@ -24,6 +25,7 @@ class HingeUnitOfWorkPort(ABC):
     decisions: HingeDecisionRepo
     sessions: HingeSessionRepo
     chat: HingeChatRepo
+    prompts: HingePromptsRepo
 
     @abstractmethod
     def __enter__(self) -> "HingeUnitOfWorkPort":

@@ -7,11 +7,13 @@ from hinge.domain.models.chat_channel import HingeChatChannel
 from hinge.domain.models.chat_message import HingeChatMessage
 from hinge.domain.models.decision import HingeDecision
 from hinge.domain.models.profile import HingeProfile
+from hinge.domain.models.prompt import HingePrompt
 from hinge.domain.models.swipe_session import HingeSwipeSession
 from hinge.infrastructure.db.tables.chat_channel import hinge_chat_channel_table
 from hinge.infrastructure.db.tables.chat_message import hinge_chat_message_table
 from hinge.infrastructure.db.tables.decision import hinge_decision_table
 from hinge.infrastructure.db.tables.profile import hinge_profile_table
+from hinge.infrastructure.db.tables.prompt import hinge_prompt_table
 from hinge.infrastructure.db.tables.scan_run import hinge_scan_run_table  # noqa: F401
 from hinge.infrastructure.db.tables.session import hinge_session_table
 
@@ -69,3 +71,5 @@ def start_hinge_mappers() -> None:
         HingeChatMessage,
         hinge_chat_message_table,
     )
+
+    hinge_mapper_registry.map_imperatively(HingePrompt, hinge_prompt_table)
