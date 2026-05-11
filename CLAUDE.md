@@ -151,20 +151,29 @@ Settings loaded via Pydantic Settings (`hinge.core.config.get_settings`) with pr
 
 ## Code Style
 
-- Python 3.13+, line length 88
+- Python 3.14, line length 88
 - Ruff for linting (rules: E, F, C, D, B, I, Q) and formatting
 - Double quotes, trailing commas enforced
 - Google-style docstrings (per ruff D rules)
 
-## Python 3.13+ — Type Hint Rules
+## Python 3.14 — CRITICAL RULES
 
-**ALWAYS** use built-in types:
+### Type Hints
+**ALWAYS** use built-in types. **NEVER** import from `typing` for these:
 - `list[X]` not `List[X]`
 - `dict[K, V]` not `Dict[K, V]`
 - `X | Y` not `Union[X, Y]`
 - `X | None` not `Optional[X]`
 
-Valid from `typing`: `Any`, `Literal`, `TypeVar`, `Protocol`, `TypedDict`, `TYPE_CHECKING`.
+Still valid from `typing`: `Any`, `Literal`, `TypeVar`, `Protocol`, `TypedDict`.
+
+### Annotations & Forward References (PEP 649)
+- **NEVER** use `from __future__ import annotations` — this is Python 3.14, not needed
+- **NEVER** use string-quoted type annotations (e.g., `"MyClass"`) — forward references resolve natively in 3.14 via PEP 649
+- **NEVER** use `if TYPE_CHECKING:` import guards — all annotations are evaluated lazily, circular imports in type hints are not an issue
+- **NEVER** wrap type hints in quotes for any reason — if you see `def foo() -> "Bar":` that is WRONG, it should be `def foo() -> Bar:`
+
+If you violate any of these rules, the code review will reject your PR.
 
 ## Disclaimer
 

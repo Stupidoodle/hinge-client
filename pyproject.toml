@@ -5,7 +5,7 @@ description = "Reverse-engineered Hinge mobile API client with chat persistence 
 authors = [
     { name = "Bryan", email = "bryan.tran053@gmail.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.18.4",
     "httpx>=0.28.1",
@@ -24,7 +24,7 @@ build-backend = "uv_build"
 
 [tool.ruff]
 line-length = 88
-target-version = "py313"
+target-version = "py314"
 src = ["src", "tests"]
 exclude = [
     ".git",
@@ -52,7 +52,7 @@ fixable = ["E", "I"]
 [tool.mypy]
 strict_equality = true
 check_untyped_defs = true
-python_version = "3.13"
+python_version = "3.14"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
