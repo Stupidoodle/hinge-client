@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "python-dotenv>=1.2.2",
     "python-jose>=3.5.0",
+    "sqlalchemy>=2.0.49",
     "structlog>=25.5.0",
     "websockets>=16.0",
 ]
