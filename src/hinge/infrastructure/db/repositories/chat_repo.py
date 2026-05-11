@@ -154,4 +154,4 @@ class SqlHingeChatRepo(HingeChatRepo):
             .where(hinge_chat_channel_table.c.channel_url.in_(orphan_urls))
             .values(is_connection_active=False)
         )
-        return self._session.execute(stmt).rowcount
+        return self._session.execute(stmt).rowcount  # type: ignore[attr-defined]

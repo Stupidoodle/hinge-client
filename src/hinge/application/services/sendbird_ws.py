@@ -9,12 +9,17 @@ import asyncio
 import json
 import ssl
 import time
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import certifi
 import websockets
 from websockets.asyncio.client import ClientConnection
 
 from hinge.core.logging_config import logger as log
+
+# Type alias for the on_event callback: ``(event_type, payload) -> awaitable``.
+EventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 
 def _build_ssl_context() -> ssl.SSLContext:
@@ -36,6 +41,7 @@ def _get_ssl_context() -> ssl.SSLContext:
     if _SSL_CONTEXT is None:
         _SSL_CONTEXT = _build_ssl_context()
     return _SSL_CONTEXT
+
 
 # Sendbird app
 SENDBIRD_APP_ID = "3CDAD91C-1E0D-4A0D-BBEE-9671988BF9E9"
@@ -77,7 +83,7 @@ class SendbirdWsBridge:
         identity_id: str,
         jwt: str,
         *,
-        on_event: asyncio.coroutines | None = None,
+        on_event: EventCallback | None = None,
     ) -> None:
         """Construct the bridge with Sendbird identity, JWT, and event callback."""
         self.identity_id = identity_id

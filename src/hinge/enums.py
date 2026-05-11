@@ -1,8 +1,14 @@
 """Enums used in the Hinge API."""
 
 from enum import Enum, IntEnum
+from typing import TYPE_CHECKING
 
 from pydantic_core import CoreSchema, core_schema
+
+if TYPE_CHECKING:
+    # Only imported for type checkers — avoids the circular import at runtime
+    # because ``hinge.prompts_manager`` also imports from ``hinge.enums``.
+    from hinge.prompts_manager import HingePromptsManager
 
 
 def add_base_preferences(cls: type[IntEnum]):

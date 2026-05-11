@@ -106,7 +106,7 @@ class SqlHingeProfileRepo(HingeProfileRepo):
             .values(likely_rejected=True, rejection_detected_at=now)
         )
         result = self._session.execute(stmt)
-        return result.rowcount
+        return result.rowcount  # type: ignore[attr-defined]
 
     def count_by_rejection_type(self, rejection_type: str) -> int:
         """Count rejected profiles by type ('passed' or 'gone')."""
@@ -140,7 +140,7 @@ class SqlHingeProfileRepo(HingeProfileRepo):
             .where(hinge_profile_table.c.subject_id.in_(subject_ids))
             .values(miss_count=hinge_profile_table.c.miss_count + 1)
         )
-        return self._session.execute(stmt).rowcount
+        return self._session.execute(stmt).rowcount  # type: ignore[attr-defined]
 
     def reset_miss_count(self, subject_ids: set[str]) -> int:
         """Reset miss_count to 0 for profiles present in a scan."""
@@ -154,7 +154,7 @@ class SqlHingeProfileRepo(HingeProfileRepo):
             )
             .values(miss_count=0)
         )
-        return self._session.execute(stmt).rowcount
+        return self._session.execute(stmt).rowcount  # type: ignore[attr-defined]
 
     def clear_false_rejections(self, present_ids: set[str]) -> int:
         """Un-reject profiles that reappeared in the feed."""
@@ -173,7 +173,7 @@ class SqlHingeProfileRepo(HingeProfileRepo):
                 miss_count=0,
             )
         )
-        return self._session.execute(stmt).rowcount
+        return self._session.execute(stmt).rowcount  # type: ignore[attr-defined]
 
     def set_rejection_type(self, subject_id: str, rejection_type: str) -> None:
         """Set rejection_type ('passed' or 'gone') on a rejected profile."""
