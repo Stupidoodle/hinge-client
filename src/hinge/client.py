@@ -23,9 +23,10 @@ import os
 import uuid
 import websockets
 
-from config import Settings, get_settings
-from hinge_error import HingeAuthError, HingeEmail2FAError
-from hinge_models import (
+from hinge.core.config import Settings, get_settings
+from hinge.core.logging_config import logger as log
+from hinge.error import HingeAuthError, HingeEmail2FAError
+from hinge.models import (
     AnswerContent,
     AnswerContentPayload,
     CreateRate,
@@ -45,8 +46,7 @@ from hinge_models import (
     SendbirdAuthToken,
     UserProfile,
 )
-from hinge_prompts_manager import HingePromptsManager
-from logging_config import logger as log
+from hinge.prompts_manager import HingePromptsManager
 
 
 class HingeClient:
@@ -120,9 +120,7 @@ class HingeClient:
                 self.hinge_token = session_data.get("hinge_token", "")
                 self.identity_id = session_data.get("identity_id", "")
                 self.sendbird_jwt = session_data.get("sendbird_jwt", "")
-                self.sendbird_session_key = session_data.get(
-                    "sendbird_session_key", ""
-                )
+                self.sendbird_session_key = session_data.get("sendbird_session_key", "")
                 if session_data.get("hinge_token_expires"):
                     self.hinge_token_expires = datetime.fromisoformat(
                         session_data["hinge_token_expires"]
@@ -453,9 +451,7 @@ class HingeClient:
                         sendbird_session_key=self.sendbird_session_key[:6] + "...",
                     )
                 else:
-                    raise HingeAuthError(
-                        "Did not receive LOGI from Sendbird WebSocket"
-                    )
+                    raise HingeAuthError("Did not receive LOGI from Sendbird WebSocket")
 
             self._save_session()
             log.info("Sendbird Authentication complete.")
@@ -983,8 +979,7 @@ class HingeClient:
                         RecommendationSubject.model_validate(subject_data)
                     )
                 log.info(
-                    f"Loaded {len(self.recommendations)} "
-                    f"recommendations from file."
+                    f"Loaded {len(self.recommendations)} recommendations from file."
                 )
         except (json.JSONDecodeError, KeyError) as e:
             log.error(
@@ -1050,27 +1045,21 @@ class HingeClient:
     async def get_prompt_text(self, prompt_id: str) -> str:
         """Get prompt text by ID (backwards compatibility)."""
         if self.prompts_manager is None:
-            raise HingeAuthError(
-                "Prompts manager is not loaded. Call fetch_prompts()."
-            )
+            raise HingeAuthError("Prompts manager is not loaded. Call fetch_prompts().")
 
         return self.prompts_manager.get_prompt_display_text(prompt_id)
 
     async def search_prompts(self, query: str) -> list:
         """Search prompts by text."""
         if self.prompts_manager is None:
-            raise HingeAuthError(
-                "Prompts manager is not loaded. Call fetch_prompts()."
-            )
+            raise HingeAuthError("Prompts manager is not loaded. Call fetch_prompts().")
 
         return self.prompts_manager.search_prompts(query)
 
     async def get_prompts_by_category(self, category_slug: str) -> list:
         """Get prompts by category slug."""
         if self.prompts_manager is None:
-            raise HingeAuthError(
-                "Prompts manager is not loaded. Call fetch_prompts()."
-            )
+            raise HingeAuthError("Prompts manager is not loaded. Call fetch_prompts().")
 
         return self.prompts_manager.get_prompts_by_category(category_slug)
 
@@ -1117,9 +1106,7 @@ class HingeClient:
             await self._authenticate_with_sendbird()
 
             if not self.sendbird_jwt:
-                log.error(
-                    "Failed to reauthenticate with Sendbird, session is invalid."
-                )
+                log.error("Failed to reauthenticate with Sendbird, session is invalid.")
                 return False
 
         now_utc = datetime.now(timezone.utc)
@@ -1154,7 +1141,7 @@ class HingeClient:
 
         return is_valid
 
-    async def prompt_payload(self) -> dict[str, Any]:
+    async def prompt_payload(self) -> dict[str, Any]:  # noqa: C901
         """Get the payload structure for fetching prompts.
 
         Returns:

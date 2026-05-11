@@ -1,4 +1,29 @@
+[project]
+name = "hinge"
+version = "0.1.0"
+description = "Reverse-engineered Hinge mobile API client with chat persistence and FastAPI surface."
+authors = [
+    { name = "Bryan", email = "bryan.tran053@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "python-dotenv>=1.2.2",
+    "python-jose>=3.5.0",
+    "structlog>=25.5.0",
+    "websockets>=16.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
+
 [tool.ruff]
+line-length = 88
+target-version = "py313"
+src = ["src", "tests"]
 exclude = [
     ".git",
     "__pycache__",
@@ -9,58 +34,36 @@ exclude = [
     ".mypy_cache",
     ".pytest_cache",
     "node_modules",
-    "alembic_app",
-    "alembic_auth",
-    ".ruff_cache"
+    ".ruff_cache",
+    "migrations/versions",
 ]
 
-line-length = 88
+[tool.ruff.lint]
+select = ["E", "F", "C", "D", "B", "I", "Q"]
+ignore = ["E203", "D203", "D213", "I001"]
+fixable = ["E", "I"]
 
-target-version = "py312"
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+"src/hinge/__init__.py" = ["D104"]
 
-lint.select = [
-    "E",
-    "F",
-    "C",
-    "D",
-    "B",
-    "I",
-    "Q"
+[tool.mypy]
+strict_equality = true
+check_untyped_defs = true
+python_version = "3.13"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests that hit real Hinge or Sendbird APIs",
 ]
 
-# Ignore specific rules
-lint.ignore = [
-    "E203",  # Whitespace before ':'
-    "D203",
-    "D213",
-    "I001"
+[dependency-groups]
+dev = [
+    "mypy>=2.0.0",
+    "pre-commit>=4.6.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.15.12",
 ]
-
-# Fixable rules
-lint.fixable = [
-    "E",
-    "I",
-]
-
-[tool.black]
-line-length = 87
-
-target-version = ["py312"]
-
-skip-string-normalization = false
-
-skip-magic-trailing-comma = false
-
-exclude = '''
-/(
-    \.git
-  | \.venv
-  | \.ruff_cache
-  | \.pytest_cache
-  | __pycache__
-  | build
-  | dist
-  | venv
-  | node_modules
-)/
-'''

@@ -8,9 +8,7 @@ class HingeError(Exception):
 class HingeAuthError(HingeError):
     """Exception raised for authentication errors."""
 
-    def __init__(
-        self, message="Authentication failed. Please check your credentials."
-    ):
+    def __init__(self, message="Authentication failed. Please check your credentials."):
         """Initialize the HingeAuthError with a custom message.
 
         Args:

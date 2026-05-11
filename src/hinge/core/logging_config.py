@@ -2,7 +2,7 @@
 
 import logging
 import structlog
-from config import get_settings
+from hinge.core.config import get_settings
 
 settings = get_settings()
 

@@ -1,7 +1,7 @@
 """Manager for handling Hinge prompts."""
 
-from hinge_enums import ContentType
-from hinge_models import Prompt, PromptCategory, PromptsResponse
+from hinge.enums import ContentType
+from hinge.models import Prompt, PromptCategory, PromptsResponse
 
 
 class HingePromptsManager:
@@ -32,9 +32,7 @@ class HingePromptsManager:
 
     def get_prompts_by_content_type(self, content_type: ContentType) -> list[Prompt]:
         """Get all prompts that support a specific content type."""
-        return [
-            p for p in self.prompts_data.prompts if content_type in p.content_types
-        ]
+        return [p for p in self.prompts_data.prompts if content_type in p.content_types]
 
     def get_selectable_prompts(self) -> list[Prompt]:
         """Get all selectable prompts."""

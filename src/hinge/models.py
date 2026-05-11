@@ -17,7 +17,7 @@ from pydantic.alias_generators import to_camel
 from typing import Any, Literal, TYPE_CHECKING
 from uuid import uuid4
 
-from hinge_enums import (
+from hinge.enums import (
     ChildrenStatusEnum,
     ContentType,
     DatingIntentionEnum,
@@ -34,10 +34,10 @@ from hinge_enums import (
     ReligionEnum,
     SmokingStatusEnum,
 )
-from logging_config import logger as log
+from hinge.core.logging_config import logger as log
 
 if TYPE_CHECKING:
-    from hinge_client import HingeClient  # noqa: F401
+    from hinge.client import HingeClient  # noqa: F401
 
 
 class BaseHingeModel(BaseModel):
@@ -529,10 +529,12 @@ class CreateRate(BaseHingeModel):
     session_id: str
     content: CreateRateContent | None = None
     created: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
+        default_factory=lambda: (
+            datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
     )
     rating_token: str
     initiated_with: Literal["standard", "superlike"] | None = None

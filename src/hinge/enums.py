@@ -6,7 +6,7 @@ from pydantic_core import CoreSchema, core_schema
 from typing import Type, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hinge_prompts_manager import HingePromptsManager
+    from hinge.prompts_manager import HingePromptsManager
 
 
 def add_base_preferences(cls: Type[IntEnum]):
@@ -173,10 +173,7 @@ class QuestionId(str, Enum):
     @classmethod
     def _missing_(cls, value):
         """Handle missing values gracefully."""
-        print(
-            f"Warning: Missing QuestionId value for {value}. "
-            f"Defaulting to UNKNOWN."
-        )
+        print(f"Warning: Missing QuestionId value for {value}. Defaulting to UNKNOWN.")
         return cls.UNKNOWN
 
     @property
@@ -267,10 +264,7 @@ class DynamicQuestionId:
             return self._prompt_to_id_cache[prompt_text_lower]
 
         for cached_prompt, prompt_id in self._prompt_to_id_cache.items():
-            if (
-                prompt_text_lower in cached_prompt
-                or cached_prompt in prompt_text_lower
-            ):
+            if prompt_text_lower in cached_prompt or cached_prompt in prompt_text_lower:
                 return prompt_id
 
         return None
