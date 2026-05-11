@@ -1,7 +1,5 @@
 """Hinge profile repository port."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 
 from hinge.domain.models.profile import HingeProfile
@@ -54,6 +52,11 @@ class HingeProfileRepo(ABC):
     @abstractmethod
     def mark_likely_rejected(self, subject_ids: set[str]) -> int:
         """Flag profiles as likely rejected. Returns count updated."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def count_by_rejection_type(self, rejection_type: str) -> int:
+        """Count profiles flagged with a specific rejection_type ('passed' / 'gone')."""
         raise NotImplementedError
 
     @abstractmethod

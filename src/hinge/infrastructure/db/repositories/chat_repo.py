@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from hinge.domain.models.chat_channel import HingeChatChannel
 from hinge.domain.models.chat_message import HingeChatMessage
+from hinge.domain.ports.chat_repo import HingeChatRepo
 from hinge.infrastructure.db.tables.chat_channel import hinge_chat_channel_table
 from hinge.infrastructure.db.tables.chat_message import hinge_chat_message_table
 
@@ -72,7 +73,7 @@ def _message_to_row(m: HingeChatMessage) -> dict[str, object]:
     }
 
 
-class SqlHingeChatRepo:
+class SqlHingeChatRepo(HingeChatRepo):
     """SQLAlchemy-backed Hinge chat repository."""
 
     def __init__(self, session: Session) -> None:
