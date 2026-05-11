@@ -19,8 +19,13 @@ class HingeProfileRepo(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def list(self, *, limit: int = 50, offset: int = 0) -> list[HingeProfile]:
-        """List profiles with pagination."""
+    def list_all(self, *, limit: int = 50, offset: int = 0) -> list[HingeProfile]:
+        """List profiles with pagination.
+
+        Named ``list_all`` (not ``list``) to avoid shadowing the ``list``
+        builtin inside the class scope, which breaks other annotations
+        on the same class that use ``list[HingeProfile]``.
+        """
         raise NotImplementedError
 
     @abstractmethod

@@ -1,6 +1,7 @@
 """Hinge chat repository port — abstract boundary for chat persistence."""
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from hinge.domain.models.chat_channel import HingeChatChannel
 from hinge.domain.models.chat_message import HingeChatMessage
@@ -43,7 +44,7 @@ class HingeChatRepo(ABC):
         channel_url: str,
         *,
         limit: int = 100,
-        before_ts: object | None = None,
+        before_ts: datetime | None = None,
     ) -> list[HingeChatMessage]:
         """Fetch messages for a channel, newest-first, paginated by timestamp."""
         raise NotImplementedError

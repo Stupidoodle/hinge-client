@@ -28,7 +28,7 @@ class SqlHingeProfileRepo(HingeProfileRepo):
         """Get a profile by subject_id."""
         return self._session.get(HingeProfile, subject_id)
 
-    def list(self, *, limit: int = 50, offset: int = 0) -> list[HingeProfile]:
+    def list_all(self, *, limit: int = 50, offset: int = 0) -> list[HingeProfile]:
         """List profiles with pagination."""
         return list(
             self._session.execute(
