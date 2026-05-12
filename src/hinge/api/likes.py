@@ -150,8 +150,6 @@ async def get_standouts(
     container: HingeContainer = Depends(require_hinge_auth),
 ) -> HingeStandoutsResponse:
     """Get standouts feed (v2 for free/paid split), hydrated into encounters."""
-    await container.ensure_prompts()
-
     # Use v2 to get the free/paid split
     response = await container._client.get_standouts()
     all_subjects = response.free + response.paid

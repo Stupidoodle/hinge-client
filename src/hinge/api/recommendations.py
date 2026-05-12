@@ -346,8 +346,7 @@ async def get_recommendations(  # noqa: C901 — top-level route orchestrates se
     """
     total_fetched = 0
 
-    # Ensure prompts cache is loaded (one-time lazy fetch)
-    await container.ensure_prompts()
+    # Prompts are loaded lazily on first profile-render path by the adapter.
 
     if refresh:
         total_fetched = await _fetch_and_persist(container)

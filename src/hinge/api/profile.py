@@ -356,7 +356,6 @@ async def get_profile(
     container: HingeContainer = Depends(require_hinge_auth),
 ) -> HingeEncounterOut:
     """Fetch fresh profile + content from Hinge (single v2 call) and update DB."""
-    await container.ensure_prompts()
     profiles_map = await container.hinge_api.get_profiles_quick(
         [subject_id],
     )
