@@ -16,11 +16,7 @@ from pydantic import (
 )
 from pydantic.alias_generators import to_camel
 
-from hinge.enums import (
-    ContentType,
-    GenderPreferences,
-    QuestionId,
-)
+from hinge.enums import ContentType
 
 
 class BaseHingeModel(BaseModel):
@@ -228,7 +224,7 @@ class Preferences(BaseHingeModel):
     family_plans: list[int]
     dating_intentions: list[int]
     politics: list[int]
-    gender_preferences: list[GenderPreferences] = Field(
+    gender_preferences: list[int] = Field(
         ...,
         alias="genderPreferences",
     )
@@ -736,7 +732,7 @@ class AnswerContentPayload(BaseHingeModel):
     """Schema for a single answer in the PUT /content/v1/answers payload."""
 
     position: int
-    question_id: QuestionId
+    question_id: str
     text_answer: TextAnswer
 
 
