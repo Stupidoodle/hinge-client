@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-import hinge.client as client_mod
+import hinge.client._core as client_core
 from hinge.client import BASE_URL, HingeClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -35,7 +35,7 @@ def sessions_dir(tmp_path, monkeypatch):
     """Redirect the per-phone session store to an isolated temp dir."""
     d = tmp_path / "sessions"
     d.mkdir()
-    monkeypatch.setattr(client_mod, "SESSIONS_DIR", str(d))
+    monkeypatch.setattr(client_core, "SESSIONS_DIR", str(d))
     return d
 
 
