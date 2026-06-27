@@ -105,7 +105,9 @@ def _pretty_console_renderer() -> Any:
 def _resolve_level(level: str | int | None) -> int:
     """Resolve a level name/number, falling back to env then INFO."""
     if level is None:
-        level = os.environ.get("HINGE_LOG_LEVEL") or os.environ.get("LOG_LEVEL") or "INFO"
+        level = (
+            os.environ.get("HINGE_LOG_LEVEL") or os.environ.get("LOG_LEVEL") or "INFO"
+        )
     if isinstance(level, str):
         return logging.getLevelNamesMapping().get(level.upper(), logging.INFO)
     return level
@@ -125,6 +127,7 @@ def configure_logging(
         pretty: Force the colored column console renderer (``True``) or JSON
             (``False``). Defaults to auto — pretty when stderr is a TTY, else JSON.
         quiet_third_party: Raise httpx/httpcore/websockets loggers to WARNING.
+
     """
     resolved = _resolve_level(level)
 
