@@ -50,9 +50,12 @@ class EnumCatalog:
         Args:
             source: ``None`` loads the bundled ``hinge/data/catalog.json``; a path
                 loads that JSON file; a dict is used directly (for tests).
+
         """
         if source is None:
-            raw = (resources.files("hinge") / "data" / "catalog.json").read_text("utf-8")
+            raw = (resources.files("hinge") / "data" / "catalog.json").read_text(
+                "utf-8"
+            )
             data = json.loads(raw)
         elif isinstance(source, dict):
             data = source
