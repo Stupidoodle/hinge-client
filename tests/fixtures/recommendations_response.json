@@ -1,0 +1,23 @@
+{
+  "feeds": [
+    {
+      "origin": "compatibles",
+      "subjects": [
+        {
+          "subjectId": "subject-aaa",
+          "ratingToken": "token-aaa",
+          "origin": "compatibles",
+          "enhancements": {
+            "secondChance": {
+              "secondChanceSource": 2
+            }
+          }
+        },
+        {
+          "subjectId": "subject-bbb",
+          "ratingToken": "token-bbb"
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,10 @@ recommendations_*.json
 captures/
 # NOTE: do NOT blanket-ignore *.json — src/hinge/data/catalog.json and
 # tests/**/fixtures/*.json are tracked, shipped data.
+# Re-include test fixtures even if they match a private pattern above
+# (e.g. recommendations_response.json vs recommendations_*.json).
+!tests/fixtures/
+!tests/fixtures/**
 
 # ── Python ──────────────────────────────────────────────────────────────────
 __pycache__/
