@@ -108,6 +108,13 @@ test (`tests/test_no_secrets.py`) fails the build if such details appear in the 
   credentials, and skipped by default and in CI.
 - Fixtures live under `tests/**/fixtures/` and must be scrubbed of PII/tokens.
 
+## Git
+
+- **Atomic commits**: one logical change per commit (e.g. keep gitignore, logging, a refactor,
+  build/deps, and docs as separate commits), each with a clear conventional-commit message, and
+  ordered so the tree builds green at the end. Never lump unrelated changes into one commit.
+  Commit only after the change is verified.
+
 ## Code Style
 
 - Python 3.14, line length 88.
