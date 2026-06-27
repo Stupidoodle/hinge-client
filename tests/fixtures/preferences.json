@@ -1,0 +1,40 @@
+{
+  "genderedAgeRanges": {
+    "0": {"min": 24, "max": 35},
+    "1": {"min": 25, "max": 36}
+  },
+  "genderedHeightRanges": {
+    "0": {"min": 60, "max": 76}
+  },
+  "dealbreakers": {
+    "marijuana": false,
+    "smoking": false,
+    "maxDistance": false,
+    "drinking": false,
+    "educationAttained": false,
+    "genderedHeight": {"0": false, "1": false},
+    "politics": false,
+    "relationshipTypes": false,
+    "drugs": false,
+    "datingIntentions": false,
+    "familyPlans": false,
+    "genderedAge": {"0": true},
+    "religions": false,
+    "ethnicities": false,
+    "children": false
+  },
+  "religions": [1, 2],
+  "drinking": [],
+  "marijuana": [],
+  "relationshipTypes": [6],
+  "drugs": [],
+  "maxDistance": 50,
+  "children": [],
+  "ethnicities": [],
+  "smoking": [],
+  "educationAttained": [7],
+  "familyPlans": [],
+  "datingIntentions": [3],
+  "politics": [],
+  "genderPreferences": [1]
+}

@@ -1,0 +1,45 @@
+{
+  "content": {
+    "photos": [
+      {
+        "cdnId": "self-cdn-1",
+        "contentId": "self-photo-1",
+        "url": "https://cdn.example/self-photo.jpg",
+        "width": 900,
+        "height": 1200,
+        "selfieVerified": true
+      }
+    ],
+    "answers": [
+      {
+        "contentId": "self-answer-1",
+        "questionId": "self-question-1",
+        "response": "Hello world",
+        "position": 0,
+        "type": "text",
+        "transcriptionMetadata": {
+          "contentId": "tm-1",
+          "type": "voice",
+          "waveform": "AAAABBBB"
+        }
+      }
+    ],
+    "promptPoll": {
+      "contentId": "poll-1",
+      "questionId": "poll-question-1",
+      "options": ["Option A", "Option B"],
+      "selectedOptionIndex": 0
+    },
+    "videoPrompt": {
+      "contentId": "video-1",
+      "videoUrl": "https://cdn.example/self-video.mp4",
+      "questionId": "video-question-1",
+      "thumbnailUrl": "https://cdn.example/self-thumb.jpg"
+    },
+    "dateIdea": {
+      "contentId": "date-1",
+      "questionId": "date-question-1",
+      "options": ["Coffee", "Walk in the park"]
+    }
+  }
+}

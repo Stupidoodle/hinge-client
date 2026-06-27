@@ -1,0 +1,21 @@
+{
+  "status": "active",
+  "expiration": "2026-07-02T00:00:00Z",
+  "viewToken": "standouts-view-token",
+  "standouts": [
+    {
+      "subjectId": "standout-v3-1",
+      "ratingToken": "standout-v3-token-1",
+      "content": {
+        "photo": {
+          "url": "https://cdn.example/standout-v3.jpg",
+          "contentId": "standout-v3-content-1"
+        }
+      }
+    },
+    {
+      "subjectId": "standout-v3-2",
+      "ratingToken": "standout-v3-token-2"
+    }
+  ]
+}
