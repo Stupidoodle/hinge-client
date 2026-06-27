@@ -275,19 +275,11 @@ class QuestionId(str, Enum):
     def get_dynamic_prompt_text(
         cls,
         question_id: str,
-        prompt_lookup: dict[str, str] | None = None,
+        prompts_manager: HingePromptsManager | None = None,  # noqa: F821
     ) -> str:
-        """Resolve the display text for a question ID.
-
-        ``prompt_lookup`` is the ``{question_id: text}`` dict provided by
-        ``HingeApiAdapter._ensure_prompts()`` (DB-backed). Falls back to
-        the hard-coded enum for legacy IDs that pre-date the dynamic
-        catalog, and to "Unknown Question" otherwise.
-        """
-        if prompt_lookup is not None:
-            text = prompt_lookup.get(question_id)
-            if text is not None:
-                return text
+        """Get the dynamic prompt text based on the question ID."""
+        if prompts_manager:
+            return prompts_manager.get_prompt_display_text(prompt_id=question_id)
 
         try:
             return cls(question_id).prompt_text
@@ -295,21 +287,71 @@ class QuestionId(str, Enum):
             return "Unknown Question"
 
     @classmethod
-    def get_all_available_prompts(
-        cls,
-        prompt_lookup: dict[str, str] | None = None,
-    ) -> dict[str, str]:
-        """Return every known prompt as a ``{id: text}`` dict.
-
-        Prefers the dynamic catalog when supplied, otherwise falls back
-        to the hard-coded enum members.
-        """
-        if prompt_lookup is not None:
-            return dict(prompt_lookup)
+    def get_all_available_prompts(cls, prompts_manager=None) -> dict:
+        """Get all available prompts as a dict of id -> text."""
+        if prompts_manager:
+            return {
+                prompt.id: prompt.prompt
+                for prompt in prompts_manager.prompts_data.prompts
+            }
 
         return {
             member.value: member.prompt_text for member in cls if member != cls.UNKNOWN
         }
+
+
+class DynamicQuestionId:
+    """Helper class that combines static enum with dynamic prompts."""
+
+    prompts_manager: HingePromptsManager  # noqa: F821
+    _id_to_prompt_cache: dict[str, str]
+    _prompt_to_id_cache: dict[str, str]
+
+    def __init__(self, prompts_manager: HingePromptsManager):  # noqa: F821
+        """Initialize with a prompt manager.
+
+        Args:
+            prompts_manager: Manager for handling dynamic prompts.
+
+        """
+        self.prompts_manager = prompts_manager
+        self._id_to_prompt_cache = {}
+        self._prompt_to_id_cache = {}
+        self._build_caches()
+
+    def _build_caches(self) -> None:
+        """Build caches for quick lookup of prompts by ID and vice versa."""
+        for prompt in self.prompts_manager.prompts_data.prompts:
+            self._id_to_prompt_cache[prompt.id] = prompt.prompt
+            self._prompt_to_id_cache[prompt.prompt.lower()] = prompt.id
+
+    def get_prompt_text(self, question_id: str) -> str:
+        """Get the prompt text for a given question ID."""
+        if question_id in self._id_to_prompt_cache:
+            return self._id_to_prompt_cache[question_id]
+        return QuestionId.get_dynamic_prompt_text(question_id, self.prompts_manager)
+
+    def find_prompt_id(self, prompt_text: str) -> str | None:
+        """Find the question ID for a given prompt text (fuzzy matching)."""
+        prompt_text_lower = prompt_text.lower()
+        if prompt_text_lower in self._prompt_to_id_cache:
+            return self._prompt_to_id_cache[prompt_text_lower]
+
+        for cached_prompt, prompt_id in self._prompt_to_id_cache.items():
+            if prompt_text_lower in cached_prompt or cached_prompt in prompt_text_lower:
+                return prompt_id
+        return None
+
+    def get_all_prompts(self) -> dict[str, str]:
+        """Get all available prompts."""
+        return self._id_to_prompt_cache.copy()
+
+    def search_prompts(self, query: str) -> dict[str, str]:
+        """Search prompts by text content."""
+        if not self.prompts_manager:
+            return {}
+        matching_prompts = self.prompts_manager.search_prompts(query)
+        return {prompt.id: prompt.prompt for prompt in matching_prompts}
 
 
 class ContentType(str, Enum):
