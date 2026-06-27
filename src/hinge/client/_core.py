@@ -491,7 +491,7 @@ class HingeClient:
                     self._save_session()
                     return None
                 raise
-        return None  # unreachable, but satisfies type checker
+        return None  # pragma: no cover - unreachable; loop always returns or raises
 
     async def is_session_valid(self) -> bool:
         """Check if the current session is still valid via /likelimit.
