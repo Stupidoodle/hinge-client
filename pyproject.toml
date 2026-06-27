@@ -32,7 +32,6 @@ exclude = [
     ".pytest_cache",
     "node_modules",
     ".ruff_cache",
-    "migrations/versions",
 ]
 
 [tool.ruff.lint]
@@ -42,7 +41,6 @@ ignore = [
     "D203",
     "D213",
     "I001",
-    "B008",  # FastAPI Depends() in defaults is the idiomatic pattern
 ]
 fixable = ["E", "I"]
 
@@ -50,10 +48,18 @@ fixable = ["E", "I"]
 "tests/**" = ["D"]
 "src/hinge/__init__.py" = ["D104"]
 
-[tool.mypy]
-strict_equality = true
-check_untyped_defs = true
-python_version = "3.14"
+[tool.coverage.run]
+branch = true
+source = ["src/hinge"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
