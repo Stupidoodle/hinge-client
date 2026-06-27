@@ -1,11 +1,11 @@
-"""Async client for the Hinge API."""
+"""Core lifecycle, transport, and session management for the Hinge API client."""
 
 import asyncio
 import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 
@@ -13,33 +13,12 @@ from hinge.core.catalog import Catalog, EnumCatalog
 from hinge.core.logging import logger as log
 from hinge.error import HingeAuthError, HingeEmail2FAError
 from hinge.models import (
-    AnswerContent,
-    AnswerContentPayload,
-    ContentSettings,
-    CreateRate,
-    CreateRateContent,
-    CreateRateContentPrompt,
     HingeAuthToken,
     LikeLimit,
-    LikeResponse,
-    LikesYouResponse,
-    MatchRate,
-    PhotoContent,
-    Preferences,
-    ProfileContent,
-    PromptEvaluation,
     PromptsResponse,
-    RatePhoto,
-    RecommendationsResponse,
     RecommendationSubject,
-    RespondRate,
-    SelfContentResponse,
-    SelfProfileResponse,
     SendbirdAuthToken,
-    StandoutsV2Response,
     StandoutsV3Response,
-    UserProfile,
-    UserProfileV2,
 )
 from hinge.prompts_manager import HingePromptsManager
 
@@ -189,7 +168,7 @@ class HingeClient:
     phone_number: str
     prompts_manager: HingePromptsManager | None
     _enum_catalog: EnumCatalog | None
-    recommendations: dict[str, RecommendationSubject]
+    _rec_cache: dict[str, RecommendationSubject]
     sendbird_jwt: str
     sendbird_jwt_expires: datetime
     session_file: str
@@ -251,6 +230,22 @@ class HingeClient:
             "X-Device-Region": "FR",
         }
         self.prompts_manager = self._load_prompts_from_cache()
+
+        from hinge.client.resources import (
+            ChatResource,
+            ContentResource,
+            ProfileResource,
+            PromptsResource,
+            RatingResource,
+            RecommendationsResource,
+        )
+
+        self.recommendations = RecommendationsResource(self)
+        self.profile = ProfileResource(self)
+        self.rating = RatingResource(self)
+        self.content = ContentResource(self)
+        self.prompts = PromptsResource(self)
+        self.chat = ChatResource(self)
 
     def _get_default_headers(self) -> dict[str, str]:
         """Construct the default headers for most Hinge API requests."""
@@ -483,7 +478,7 @@ class HingeClient:
 
         for attempt in range(2):
             try:
-                return await self.get_like_limit()
+                return await self.rating.limit()
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 401:
                     if attempt == 0:
@@ -524,502 +519,6 @@ class HingeClient:
 
         return True
 
-    # --- Recommendations ---
-
-    async def get_recommendations(self) -> RecommendationsResponse:
-        """Fetch the main feed of recommended profiles."""
-        payload = {
-            "playerId": self.identity_id,
-            "newHere": False,
-            "activeToday": False,
-        }
-
-        response = await self.client.post(
-            "/rec/v2",
-            json=payload,
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-
-        recs_data = response.json()
-        new_count = 0
-
-        if "feeds" in recs_data:
-            for feed in recs_data["feeds"]:
-                feed_origin = feed.get("origin")
-                if "subjects" in feed:
-                    for subject_data in feed["subjects"]:
-                        subject_data["origin"] = feed_origin
-                        subject_id = subject_data.get(
-                            "subjectId",
-                        ) or subject_data.get("subject_id")
-                        if subject_id and subject_id not in self.recommendations:
-                            self.recommendations[subject_id] = (
-                                RecommendationSubject.model_validate(subject_data)
-                            )
-                            new_count += 1
-
-        # Track feed exhaustion: empty subjects = exhausted
-        total_subjects = sum(
-            len(f.get("subjects", [])) for f in recs_data.get("feeds", [])
-        )
-        self.feed_exhausted = total_subjects == 0
-
-        log.info(
-            "hinge_recommendations_fetched",
-            new=new_count,
-            exhausted=self.feed_exhausted,
-        )
-        self._save_recommendations()
-        return RecommendationsResponse.model_validate(recs_data)
-
-    async def repeat_profiles(self) -> dict[str, Any]:
-        """Recycle previously seen profiles.
-
-        Resets server-side "seen" flags.  Next ``rec/v2`` call returns
-        recycled profiles (potentially with new rating tokens).
-        """
-        response = await self.client.get(
-            "/user/repeat",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        self.feed_exhausted = False
-        return response.json()
-
-    # --- Profiles ---
-
-    async def get_self_profile(self) -> SelfProfileResponse:
-        """Fetch the authenticated user's own profile data."""
-        response = await self.client.get(
-            "/user/v3",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return SelfProfileResponse.model_validate(response.json())
-
-    async def get_self_content(self) -> SelfContentResponse:
-        """Fetch the authenticated user's own content."""
-        response = await self.client.get(
-            "/content/v2",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return SelfContentResponse.model_validate(response.json())
-
-    async def get_profile_state(self) -> dict[str, Any]:
-        """Fetch profile completion state (GET /profilestate/profile)."""
-        response = await self.client.get(
-            "/profilestate/profile",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def get_profile_basics_missing(self) -> dict[str, Any]:
-        """Fetch missing profile basics (GET /profilestate/basics/missing)."""
-        response = await self.client.get(
-            "/profilestate/basics/missing",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def get_self_preferences(self) -> Preferences:
-        """Fetch the authenticated user's preferences."""
-        response = await self.client.get(
-            "/preference/v2/selected",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return Preferences.model_validate(response.json())
-
-    async def update_self_preferences(self, payload: Preferences) -> dict[str, Any]:
-        """Update the authenticated user's preferences."""
-        _payload = [payload.model_dump(by_alias=True, exclude_none=True)]
-        response = await self.client.patch(
-            "/preference/v2/selected",
-            json=_payload,
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def update_self_profile(
-        self,
-        profile_updates: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Update the authenticated user's profile."""
-        payload = [{"profile": profile_updates}]
-        response = await self.client.patch(
-            "/user/v2",
-            json=payload,
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def update_answers(
-        self,
-        answers: list[AnswerContentPayload],
-    ) -> dict[str, Any]:
-        """Update the authenticated user's prompt answers."""
-        payload = [
-            answer.model_dump(by_alias=True, exclude_none=True) for answer in answers
-        ]
-        response = await self.client.put(
-            "/content/v1/answers",
-            json=payload,
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def put_photos(
-        self,
-        photos: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Replace all photos (PUT /content/v1/photos).
-
-        The upstream API is full-replacement: the ordered list you send
-        becomes the new photo set. Omit a photo to delete it, reorder
-        the list to reorder photos.
-        """
-        response = await self.client.put(
-            "/content/v1/photos",
-            json={"photos": photos},
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def get_cdn_token(
-        self,
-        tags: str = "",
-        folder: str = "",
-    ) -> dict[str, Any]:
-        """Get a Cloudinary upload token (POST /cdn/token)."""
-        response = await self.client.post(
-            "/cdn/token",
-            json={"params": {"tags": tags, "phash": "true", "folder": folder}},
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def get_profiles(self, user_ids: list[str]) -> list[UserProfile]:
-        """Fetch public profile data for a list of user IDs (v3, demographics only)."""
-        params = {"ids": ",".join(user_ids)}
-        response = await self.client.get(
-            "/user/v3/public",
-            params=params,
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return [UserProfile.model_validate(user) for user in response.json()]
-
-    async def get_profiles_v2(self, user_ids: list[str]) -> list[UserProfileV2]:
-        """Fetch profile + content in one call (v2, no pHash/waveform/poll)."""
-        params = {"ids": ",".join(user_ids)}
-        response = await self.client.get(
-            "/user/v2/public",
-            params=params,
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return [UserProfileV2.model_validate(user) for user in response.json()]
-
-    async def get_profile_content(self, user_ids: list[str]) -> list[ProfileContent]:
-        """Fetch content (photos, prompts) for a list of user IDs."""
-        params = {"ids": ",".join(user_ids)}
-        response = await self.client.get(
-            "/content/v2/public",
-            params=params,
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        data = response.json()
-        if not data:
-            return []
-        return [ProfileContent.model_validate(c) for c in data]
-
-    # --- Rating ---
-
-    async def get_like_limit(self) -> LikeLimit:
-        """Fetch the authenticated user's daily like and superlike limits."""
-        response = await self.client.get(
-            "/likelimit",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return LikeLimit.model_validate(response.json())
-
-    async def _run_text_review(self, text: str, receiver_id: str) -> str:
-        """Run the pre-flight text moderation check."""
-        payload = {"text": text, "receiverId": receiver_id}
-        response = await self.client.post(
-            "/flag/textreview",
-            json=payload,
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()["hcmRunId"]
-
-    async def rate_user(
-        self,
-        subject: RecommendationSubject,
-        content_item: PhotoContent | AnswerContent,
-        comment: str | None = None,
-        use_superlike: bool = False,
-    ) -> LikeResponse:
-        """Rate a user with a like or superlike, optionally with a comment."""
-        hcm_run_id = None
-        rating_type: Literal["note", "like"] = "note" if comment else "like"
-
-        if comment:
-            hcm_run_id = await self._run_text_review(
-                text=comment,
-                receiver_id=subject.subject_id,
-            )
-
-        if isinstance(content_item, PhotoContent):
-            rate_content = CreateRateContent(
-                photo=RatePhoto(
-                    content_id=content_item.content_id,
-                    url=content_item.url,
-                    cdn_id=content_item.cdn_id,
-                ),
-                comment=comment,
-            )
-        elif isinstance(content_item, AnswerContent):
-            rate_content = CreateRateContent(
-                prompt=CreateRateContentPrompt(
-                    answer=content_item.response or "",
-                    content_id=content_item.content_id,
-                    question=self._resolve_prompt_text(content_item.question_id),
-                ),
-                comment=comment,
-            )
-        else:
-            raise TypeError("content_item must be PhotoContent or AnswerContent")
-
-        payload = CreateRate(
-            session_id=self.session_id,
-            rating_token=subject.rating_token,
-            subject_id=subject.subject_id,
-            rating=rating_type,
-            hcm_run_id=hcm_run_id,
-            content=rate_content,
-            initiated_with="superlike" if use_superlike else "standard",
-        )
-
-        response = await self.client.post(
-            "/rate/v2/initiate",
-            json=payload.model_dump(by_alias=True, exclude_none=True),
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return LikeResponse.model_validate(response.json())
-
-    # --- Respond to likes / block matches ---
-
-    async def respond_to_like(
-        self,
-        subject_id: str,
-        rating: Literal["like", "block"],
-        *,
-        sort_type: str | None = None,
-    ) -> dict[str, Any]:
-        """Respond to an incoming like (POST /rate/v2/respond)."""
-        payload = RespondRate(
-            subject_id=subject_id,
-            session_id=self.session_id,
-            rating=rating,
-            sort_type=sort_type,
-        )
-        response = await self.client.post(
-            "/rate/v2/respond",
-            json=payload.model_dump(by_alias=True, exclude_none=True),
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def block_match(
-        self,
-        subject_id: str,
-        *,
-        second_chance_eligible: bool = False,
-    ) -> dict[str, Any]:
-        """Block/unmatch from match screen (POST /rate/v2/match)."""
-        payload = MatchRate(
-            subject_id=subject_id,
-            session_id=self.session_id,
-            second_chance_eligible=second_chance_eligible,
-        )
-        response = await self.client.post(
-            "/rate/v2/match",
-            json=payload.model_dump(by_alias=True, exclude_none=True),
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    # --- Likes You ---
-
-    async def get_likes_received(
-        self,
-        sort: str | None = None,
-    ) -> LikesYouResponse:
-        """Fetch profiles who liked you (GET /like/v2)."""
-        params = {}
-        if sort:
-            params["sort"] = sort
-        response = await self.client.get(
-            "/like/v2",
-            params=params or None,
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return LikesYouResponse.model_validate(response.json())
-
-    async def get_matches(self) -> dict[str, Any]:
-        """Fetch match list (GET /connection/v2)."""
-        response = await self.client.get(
-            "/connection/v2",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def get_standouts(self) -> StandoutsV2Response:
-        """Fetch standouts feed (GET /standouts/v2)."""
-        response = await self.client.get(
-            "/standouts/v2",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return StandoutsV2Response.model_validate(response.json())
-
-    async def get_standouts_v3(self) -> StandoutsV3Response | None:
-        """Fetch standouts feed (GET /standouts/v3) with ETag caching.
-
-        Returns None if server returns 304 Not Modified (use cached data).
-        """
-        headers = self._get_default_headers()
-        if self._standouts_etag:
-            headers["If-None-Match"] = self._standouts_etag
-
-        response = await self.client.get(
-            "/standouts/v3",
-            headers=headers,
-        )
-        if response.status_code == 304:
-            return self._standouts_cache
-
-        response.raise_for_status()
-        etag = response.headers.get("ETag")
-        if etag:
-            self._standouts_etag = etag
-
-        result = StandoutsV3Response.model_validate(response.json())
-        self._standouts_cache = result
-        return result
-
-    async def get_user_traits(self) -> dict[str, Any]:
-        """Fetch user traits (GET /user/v2/traits)."""
-        response = await self.client.get(
-            "/user/v2/traits",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def get_fresh_start_eligible(self) -> bool:
-        """Check if eligible for fresh start (GET /freshstart/eligible)."""
-        response = await self.client.get(
-            "/freshstart/eligible",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json().get("eligible", False)
-
-    async def do_fresh_start(self) -> bool:
-        """Execute a fresh start (POST /freshstart)."""
-        response = await self.client.post(
-            "/freshstart",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return True
-
-    async def get_store_account(self) -> dict[str, Any]:
-        """Fetch store/account info (GET /store/v2/account)."""
-        response = await self.client.get(
-            "/store/v2/account",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def get_config(self) -> dict[str, Any]:
-        """Fetch server-side enum config (GET /config/v3)."""
-        response = await self.client.get(
-            "/config/v3",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    async def get_boost_status(self) -> dict[str, Any]:
-        """Fetch boost status (GET /boost/status)."""
-        response = await self.client.get(
-            "/boost/status",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-    # --- AI evaluation ---
-
-    async def evaluate_prompt_answer(
-        self,
-        prompt_id: str,
-        answer: str,
-    ) -> PromptEvaluation:
-        """AI evaluation of a prompt answer (POST /content/v1/answer/evaluate)."""
-        response = await self.client.post(
-            "/content/v1/answer/evaluate",
-            json={"promptId": prompt_id, "answer": answer},
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return PromptEvaluation.model_validate(response.json())
-
-    # --- Content settings ---
-
-    async def get_content_settings(self) -> ContentSettings:
-        """Fetch content settings (GET /content/v1/settings)."""
-        response = await self.client.get(
-            "/content/v1/settings",
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return ContentSettings.model_validate(response.json())
-
-    async def update_content_settings(
-        self,
-        settings: ContentSettings,
-    ) -> ContentSettings:
-        """Update content settings (PATCH /content/v1/settings)."""
-        response = await self.client.patch(
-            "/content/v1/settings",
-            json=settings.model_dump(by_alias=True),
-            headers=self._get_default_headers(),
-        )
-        response.raise_for_status()
-        return ContentSettings.model_validate(response.json())
-
     # --- Prompts ---
 
     @property
@@ -1035,117 +534,6 @@ class HingeClient:
             return self.prompts_manager.get_prompt_display_text(question_id)
         return ""
 
-    async def fetch_prompts(self, force_refresh: bool = False) -> HingePromptsManager:
-        """Fetch prompts from the API or cache."""
-        if not force_refresh and self.prompts_manager is not None:
-            return self.prompts_manager
-
-        payload = await self._prompt_payload()
-
-        response = await self.client.post(
-            "/prompts",
-            headers=self._get_default_headers(),
-            json=payload,
-        )
-        response.raise_for_status()
-
-        prompts_data = PromptsResponse.model_validate(response.json())
-        self.prompts_manager = HingePromptsManager(prompts_data)
-        self._save_prompts_to_cache(prompts_data)
-        return self.prompts_manager
-
-    async def _prompt_payload(self) -> dict[str, Any]:  # noqa: C901
-        """Build the payload structure for fetching prompts."""
-        preferences = await self.get_self_preferences()
-        profile = await self.get_self_profile()
-
-        prefs_dict = preferences.model_dump(
-            by_alias=True,
-            exclude_none=True,
-            serialize_as_any=True,
-            mode="json",
-        )
-        selected = [str(g) for g in prefs_dict.get("genderPreferences", [])]
-
-        def keep_selected(d: Any) -> Any:
-            if isinstance(d, dict) and selected:
-                return {k: v for k, v in d.items() if k in selected}
-            return d
-
-        for key in ("genderedHeightRanges", "genderedAgeRanges"):
-            if key in prefs_dict:
-                prefs_dict[key] = keep_selected(prefs_dict[key])
-
-        if "dealbreakers" in prefs_dict:
-            db = prefs_dict["dealbreakers"]
-            for key in ("genderedHeight", "genderedAge"):
-                if key in db:
-                    db[key] = keep_selected(db[key])
-            prefs_dict["dealbreakers"] = db
-
-        profile_dict = profile.profile.model_dump(
-            by_alias=True,
-            exclude_none=True,
-            serialize_as_any=True,
-            mode="json",
-        )
-
-        def unwrap(obj: Any) -> Any:
-            if isinstance(obj, dict) and "value" in obj and "visible" in obj:
-                return unwrap(obj["value"])
-            if isinstance(obj, list):
-                return [unwrap(x) for x in obj]
-            if isinstance(obj, dict):
-                return {k: unwrap(v) for k, v in obj.items()}
-            return obj
-
-        p = unwrap(profile_dict)
-        loc_name = (profile_dict.get("location") or {}).get("name")
-
-        profile_payload = {
-            "works": (
-                [p.get("works")]
-                if isinstance(p.get("works"), str)
-                else p.get("works", [])
-            ),
-            "sexualOrientations": p.get("sexualOrientations", []),
-            "didJustJoin": False,
-            "smoking": p.get("smoking"),
-            "selfieVerified": p.get("selfieVerified", False),
-            "politics": p.get("politics"),
-            "relationshipTypesText": p.get("relationshipTypesText", ""),
-            "datingIntention": p.get("datingIntention"),
-            "height": p.get("height"),
-            "children": p.get("children"),
-            "matchNote": p.get("matchNote", ""),
-            "religions": p.get("religions", []),
-            "relationshipTypes": p.get("relationshipTypeIds", []),
-            "educations": p.get("educations", []),
-            "age": p.get("age"),
-            "jobTitle": p.get("jobTitle"),
-            "birthday": p.get("birthday"),
-            "drugs": p.get("drugs"),
-            "content": {},
-            "hometown": p.get("hometown"),
-            "firstName": p.get("firstName"),
-            "familyPlans": p.get("familyPlans"),
-            "location": {"name": loc_name} if loc_name is not None else {"name": None},
-            "marijuana": p.get("marijuana"),
-            "pets": p.get("pets", []),
-            "datingIntentionText": p.get("datingIntentionText", ""),
-            "educationAttained": p.get("educationAttained"),
-            "ethnicities": p.get("ethnicities", []),
-            "pronouns": p.get("pronouns", []),
-            "languagesSpoken": p.get("languagesSpoken", []),
-            "lastName": p.get("lastName", ""),
-            "ethnicitiesText": p.get("ethnicitiesText", ""),
-            "drinking": p.get("drinking"),
-            "userId": profile.user_id,
-            "genderIdentityId": p.get("genderIdentityId"),
-        }
-
-        return {"preferences": prefs_dict, "profile": profile_payload}
-
     # --- Sendbird Chat ---
 
     _SENDBIRD_REST_BASE = (
@@ -1158,144 +546,6 @@ class HingeClient:
             "Session-Key": self.sendbird_session_key,
             "Content-Type": "application/json",
         }
-
-    async def sendbird_get_conversations(
-        self,
-        limit: int = 100,
-    ) -> dict[str, Any]:
-        """List match channels from Sendbird."""
-        url = (
-            f"{self._SENDBIRD_REST_BASE}/v3/users/{self.identity_id}/my_group_channels"
-        )
-        params = {
-            "show_member": "true",
-            "show_read_receipt": "true",
-            "show_delivery_receipt": "true",
-            "show_metadata": "true",
-            "limit": str(limit),
-            "order": "latest_last_message",
-        }
-        resp = await self.client.get(
-            url,
-            params=params,
-            headers=self._sendbird_headers(),
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-    async def sendbird_get_messages(
-        self,
-        channel_url: str,
-        *,
-        next_limit: int = 30,
-        message_ts: int = 0,
-        prev_limit: int = 0,
-    ) -> dict[str, Any]:
-        """Fetch message history from a Sendbird channel."""
-        url = f"{self._SENDBIRD_REST_BASE}/v3/group_channels/{channel_url}/messages"
-        params = {
-            "message_ts": str(message_ts),
-            "prev_limit": str(prev_limit),
-            "next_limit": str(next_limit),
-            "include": "true",
-            "with_sorted_meta_array": "true",
-        }
-        resp = await self.client.get(
-            url,
-            params=params,
-            headers=self._sendbird_headers(),
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-    async def sendbird_mark_as_read(
-        self,
-        channel_url: str,
-    ) -> dict[str, Any]:
-        """Mark all messages as read in a Sendbird channel."""
-        url = (
-            f"{self._SENDBIRD_REST_BASE}"
-            f"/v3/group_channels/{channel_url}/messages/mark_as_read"
-        )
-        resp = await self.client.put(
-            url,
-            json={"user_id": self.identity_id},
-            headers=self._sendbird_headers(),
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-    async def sendbird_unread_count(self) -> dict[str, Any]:
-        """Get unread channel count from Sendbird."""
-        url = (
-            f"{self._SENDBIRD_REST_BASE}"
-            f"/v3/users/{self.identity_id}/unread_channel_count"
-        )
-        resp = await self.client.get(
-            url,
-            headers=self._sendbird_headers(),
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-    async def hinge_send_message(
-        self,
-        subject_id: str,
-        message: str,
-        *,
-        match_message: bool = False,
-        dedup_id: str | None = None,
-    ) -> dict[str, Any]:
-        """Send a message via Hinge API (server-side harassment check)."""
-        payload: dict[str, Any] = {
-            "subjectId": subject_id,
-            "matchMessage": match_message,
-            "origin": "chat",
-            "dedupId": dedup_id or str(uuid.uuid4()),
-            "messageData": {
-                "message": message,
-                "fileUrl": None,
-                "fileMetadata": None,
-            },
-            "ays": False,
-        }
-        resp = await self.client.post(
-            "/message/send",
-            json=payload,
-            headers=self._get_default_headers(),
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-    async def sendbird_react(
-        self,
-        channel_url: str,
-        message_id: int,
-        reaction: str = "like",
-    ) -> dict[str, Any]:
-        """Add a reaction (sorted_metaarray) to a Sendbird message.
-
-        Hinge uses sorted_metaarray for likes, NOT the standard
-        Sendbird reactions API.  Must use ``"value"`` (singular).
-        """
-        url = (
-            f"{self._SENDBIRD_REST_BASE}"
-            f"/v3/group_channels/{channel_url}"
-            f"/messages/{message_id}/sorted_metaarray"
-        )
-        resp = await self.client.put(
-            url,
-            json={
-                "sorted_metaarray": [
-                    {"key": self.identity_id, "value": [reaction]},
-                ],
-                "upsert": True,
-                "mode": "add",
-            },
-            headers=self._sendbird_headers(),
-        )
-        resp.raise_for_status()
-        return resp.json()
 
     # --- Session Persistence ---
 
@@ -1559,7 +809,7 @@ class HingeClient:
 
     def _load_recommendations(self) -> None:
         """Load recommendations from file if available."""
-        self.recommendations = {}
+        self._rec_cache = {}
         recs_file = f"recommendations_{self.session_id}.json"
 
         if not os.path.exists(recs_file):
@@ -1569,25 +819,17 @@ class HingeClient:
             with open(recs_file) as f:
                 recs_data = json.load(f)
                 for subject_id, subject_data in recs_data.items():
-                    self.recommendations[subject_id] = (
-                        RecommendationSubject.model_validate(subject_data)
+                    self._rec_cache[subject_id] = RecommendationSubject.model_validate(
+                        subject_data
                     )
         except json.JSONDecodeError, KeyError:
-            self.recommendations = {}
+            self._rec_cache = {}
 
     def _save_recommendations(self) -> None:
         """Save current recommendations to file."""
         with open(f"recommendations_{self.session_id}.json", "w") as f:
-            serializable = {
-                sid: s.model_dump() for sid, s in self.recommendations.items()
-            }
+            serializable = {sid: s.model_dump() for sid, s in self._rec_cache.items()}
             json.dump(serializable, f, indent=2)
-
-    def remove_recommendation(self, subject_id: str) -> None:
-        """Remove a recommendation from memory and save state."""
-        if subject_id in self.recommendations:
-            del self.recommendations[subject_id]
-            self._save_recommendations()
 
     def _load_prompts_from_cache(self) -> HingePromptsManager | None:
         """Load prompts from cached JSON file."""
