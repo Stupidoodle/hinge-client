@@ -1,11 +1,25 @@
 [project]
-name = "hinge"
-version = "0.1.0"
+name = "hinge-client"
+dynamic = ["version"]
 description = "Typed async client for the Hinge dating-app API."
-authors = [
-    { name = "Bryan", email = "bryan.tran053@gmail.com" }
-]
+readme = "README.md"
 requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE.md"]
+authors = [
+    { name = "Bryan", email = "bryan.tran053@gmail.com" },
+]
+keywords = ["hinge", "dating", "api-client", "async", "httpx", "sendbird"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2.13.4",
@@ -13,9 +27,30 @@ dependencies = [
     "websockets>=16.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Stupidoodle/hinge-client"
+Repository = "https://github.com/Stupidoodle/hinge-client"
+Issues = "https://github.com/Stupidoodle/hinge-client/issues"
+
 [build-system]
-requires = ["uv_build>=0.11.7,<0.12.0"]
-build-backend = "uv_build"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hinge"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/hinge",
+    "README.md",
+    "LICENSE.md",
+    "CHANGELOG.md",
+    "pyproject.toml",
+]
 
 [tool.ruff]
 line-length = 88
@@ -77,5 +112,6 @@ dev = [
     "pytest-cov>=7.1.0",
     "respx>=0.23.1",
     "ruff>=0.15.12",
+    "twine>=6.2.0",
     "ty>=0.0.55",
 ]
