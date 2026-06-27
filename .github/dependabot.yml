@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Keep SHA-pinned GitHub Actions current (Dependabot updates the pins + comments).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Python dependencies via the uv lockfile.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python:
+        patterns: ["*"]
