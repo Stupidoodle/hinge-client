@@ -1,0 +1,63 @@
+{
+  "identityId": "identity-v2-789",
+  "profile": {
+    "userId": "public-user-789",
+    "age": 27,
+    "firstName": "Alex",
+    "genderId": 0,
+    "height": 180,
+    "location": {
+      "name": "Seattle",
+      "metroArea": "Greater Seattle"
+    },
+    "selfieVerified": false,
+    "didjustJoin": true,
+    "hometown": "Boston, MA",
+    "jobTitle": "Engineer",
+    "works": "Acme Corp",
+    "educationAttained": 7,
+    "educations": ["Bachelors"],
+    "children": 2,
+    "datingIntention": 1,
+    "drinking": 2,
+    "drugs": 1,
+    "marijuana": 1,
+    "smoking": 1,
+    "politics": 1,
+    "religions": [1, 2],
+    "ethnicities": [3],
+    "familyPlans": 1,
+    "languagesSpoken": [10, 20],
+    "pets": [1],
+    "sexualOrientations": [1],
+    "relationshipTypes": [6],
+    "zodiac": 4,
+    "photos": [
+      {
+        "cdnId": "cdn-photo-1",
+        "contentId": "content-photo-1",
+        "url": "https://cdn.example/photo1.jpg",
+        "width": 800,
+        "height": 1000,
+        "caption": "On a hike",
+        "pHash": "abc123",
+        "boundingBox": {
+          "topLeft": {"x": 0.1, "y": 0.1},
+          "bottomRight": {"x": 0.9, "y": 0.9}
+        },
+        "videos": [
+          {"url": "https://cdn.example/clip.mp4", "quality": "hd", "width": 720, "height": 1280}
+        ]
+      }
+    ],
+    "answers": [
+      {
+        "contentId": "content-answer-1",
+        "questionId": "question-1",
+        "response": "Two truths and a lie",
+        "position": 0,
+        "type": "text"
+      }
+    ]
+  }
+}

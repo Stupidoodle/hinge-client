@@ -1,0 +1,20 @@
+{
+  "userId": "public-user-456",
+  "profile": {
+    "age": 31,
+    "firstName": "Sam",
+    "location": {
+      "name": "Brooklyn",
+      "metroArea": "New York City"
+    },
+    "height": 168,
+    "children": {"value": 1, "visible": true},
+    "datingIntention": {"value": 2, "visible": true},
+    "religions": {"value": [4], "visible": true},
+    "educations": {"value": ["Masters"], "visible": false},
+    "hometown": {"value": "Chicago, IL", "visible": true},
+    "jobTitle": {"value": "Designer", "visible": true},
+    "works": {"value": "Studio One", "visible": true},
+    "didjustJoin": false
+  }
+}

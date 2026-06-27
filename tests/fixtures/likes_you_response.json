@@ -1,0 +1,28 @@
+{
+  "likes": [
+    {
+      "subjectId": "liker-1",
+      "created": "2026-06-01T10:00:00Z",
+      "rating": "like",
+      "showMatchNote": true,
+      "initiatedWith": "standard",
+      "hidden": false,
+      "ratingToken": "liker-token-1"
+    }
+  ],
+  "sorts": [
+    {"id": "recent", "title": "Most Recent"}
+  ],
+  "sortedLikes": [
+    {
+      "sortID": "recent",
+      "data": [
+        {"subjectId": "liker-2", "rating": "like"}
+      ]
+    }
+  ],
+  "hiddenLikes": [
+    {"id": "hidden-1", "reason": "moderation"}
+  ],
+  "viewToken": "likes-view-token"
+}

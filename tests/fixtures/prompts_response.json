@@ -1,0 +1,27 @@
+{
+  "prompts": [
+    {
+      "id": "prompt-1",
+      "prompt": "Two truths and a lie",
+      "isSelectable": true,
+      "placeholder": "Go on...",
+      "isNew": false,
+      "categories": ["icebreakers"],
+      "contentTypes": ["text", "poll"]
+    },
+    {
+      "id": "prompt-2",
+      "prompt": "My simple pleasures",
+      "isSelectable": true,
+      "isNew": true
+    }
+  ],
+  "categories": [
+    {
+      "name": "Icebreakers",
+      "slug": "icebreakers",
+      "isVisible": true,
+      "isNew": false
+    }
+  ]
+}
