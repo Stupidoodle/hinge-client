@@ -1,1 +1,0 @@
-"""hinge.domain.models package."""

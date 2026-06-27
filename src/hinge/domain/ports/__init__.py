@@ -1,1 +1,0 @@
-"""hinge.domain.ports package."""

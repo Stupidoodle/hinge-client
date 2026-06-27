@@ -1,1 +1,0 @@
-"""hinge.infrastructure package."""
