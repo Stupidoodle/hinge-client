@@ -1,0 +1,35 @@
+# Local hooks run the project's pinned tools (via uv) so versions match CI.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-toml
+      - id: check-yaml
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+      - id: ty
+        name: ty check
+        entry: uv run ty check src
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: leak-canary
+        name: leak-canary (no RE methodology in tracked files)
+        entry: uv run pytest tests/test_no_secrets.py -q
+        language: system
+        pass_filenames: false

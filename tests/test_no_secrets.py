@@ -69,6 +69,7 @@ def test_no_reversing_vocab_in_tracked_files():
             "--",
             ":(exclude).gitignore",
             ":(exclude)tests/test_no_secrets.py",
+            ":(exclude).github/RELEASE.md",
         ],
         cwd=REPO_ROOT,
         capture_output=True,
