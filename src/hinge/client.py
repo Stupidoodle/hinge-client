@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 import httpx
 
+from hinge.core.catalog import Catalog, EnumCatalog
 from hinge.core.logging import logger as log
 from hinge.error import HingeAuthError, HingeEmail2FAError
 from hinge.models import (
@@ -73,7 +74,7 @@ def _derive_auth_state(
             if expires > datetime.now(timezone.utc):
                 return "authenticated"
             return "expired"
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
 
     return "unauthenticated"
@@ -99,9 +100,11 @@ async def _preflight_refresh_session(
     if not token or saved_state not in ("authenticated", ""):
         return "skipped"
 
+    if not isinstance(expires_str, str):
+        return "skipped"
     try:
         expires = datetime.fromisoformat(expires_str)
-    except (ValueError, TypeError):
+    except ValueError:
         return "skipped"
 
     if expires <= now:
@@ -185,6 +188,7 @@ class HingeClient:
     install_id: str
     phone_number: str
     prompts_manager: HingePromptsManager | None
+    _enum_catalog: EnumCatalog | None
     recommendations: dict[str, RecommendationSubject]
     sendbird_jwt: str
     sendbird_jwt_expires: datetime
@@ -219,6 +223,7 @@ class HingeClient:
         self.feed_exhausted: bool = False
         self._standouts_etag: str | None = None
         self._standouts_cache: StandoutsV3Response | None = None
+        self._enum_catalog: EnumCatalog | None = None
 
         # Ensure sessions directory exists
         os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -791,7 +796,7 @@ class HingeClient:
                 prompt=CreateRateContentPrompt(
                     answer=content_item.response or "",
                     content_id=content_item.content_id,
-                    question=content_item.question_id.prompt_text,
+                    question=self._resolve_prompt_text(content_item.question_id),
                 ),
                 comment=comment,
             )
@@ -1017,6 +1022,19 @@ class HingeClient:
 
     # --- Prompts ---
 
+    @property
+    def catalog(self) -> Catalog:
+        """In-memory catalog: enum labels (static) + the live prompt library."""
+        if self._enum_catalog is None:
+            self._enum_catalog = EnumCatalog.load()
+        return Catalog(self._enum_catalog, self.prompts_manager)
+
+    def _resolve_prompt_text(self, question_id: str) -> str:
+        """Resolve a prompt question id to its display text (best-effort)."""
+        if self.prompts_manager is not None:
+            return self.prompts_manager.get_prompt_display_text(question_id)
+        return ""
+
     async def fetch_prompts(self, force_refresh: bool = False) -> HingePromptsManager:
         """Fetch prompts from the API or cache."""
         if not force_refresh and self.prompts_manager is not None:
@@ -1147,8 +1165,7 @@ class HingeClient:
     ) -> dict[str, Any]:
         """List match channels from Sendbird."""
         url = (
-            f"{self._SENDBIRD_REST_BASE}"
-            f"/v3/users/{self.identity_id}/my_group_channels"
+            f"{self._SENDBIRD_REST_BASE}/v3/users/{self.identity_id}/my_group_channels"
         )
         params = {
             "show_member": "true",
@@ -1175,10 +1192,7 @@ class HingeClient:
         prev_limit: int = 0,
     ) -> dict[str, Any]:
         """Fetch message history from a Sendbird channel."""
-        url = (
-            f"{self._SENDBIRD_REST_BASE}"
-            f"/v3/group_channels/{channel_url}/messages"
-        )
+        url = f"{self._SENDBIRD_REST_BASE}/v3/group_channels/{channel_url}/messages"
         params = {
             "message_ts": str(message_ts),
             "prev_limit": str(prev_limit),
@@ -1339,7 +1353,7 @@ class HingeClient:
                         "needs_reauth": needs_reauth,
                     },
                 )
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 continue
         return sessions
 
@@ -1371,7 +1385,7 @@ class HingeClient:
             try:
                 with open(fpath) as f:
                     data = json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 continue
 
             result = await _preflight_refresh_session(
@@ -1420,7 +1434,7 @@ class HingeClient:
                             new=self.session_file,
                         )
                     return
-                except (json.JSONDecodeError, OSError):
+                except json.JSONDecodeError, OSError:
                     log.warning("hinge_session_corrupt", file=path)
 
         # No phone-specific session found — scan for any valid session
@@ -1444,7 +1458,7 @@ class HingeClient:
                             phone=self.phone_number,
                         )
                         return
-                except (json.JSONDecodeError, OSError):
+                except json.JSONDecodeError, OSError:
                     continue
 
         self._create_session()
@@ -1558,7 +1572,7 @@ class HingeClient:
                     self.recommendations[subject_id] = (
                         RecommendationSubject.model_validate(subject_data)
                     )
-        except (json.JSONDecodeError, KeyError):
+        except json.JSONDecodeError, KeyError:
             self.recommendations = {}
 
     def _save_recommendations(self) -> None:
