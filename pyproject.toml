@@ -103,6 +103,21 @@ markers = [
     "integration: marks tests that hit real Hinge or Sendbird APIs",
 ]
 
+[tool.semantic_release]
+# Conventional commits drive the version; hatch-vcs reads the tag PSR creates,
+# so there is no version string to write into a file (version_* left unset).
+tag_format = "v{version}"
+commit_parser = "conventional"
+allow_zero_version = true
+major_on_zero = false       # in 0.x, breaking changes bump the minor, not 1.0.0
+build_command = ""          # the release workflow builds + publishes separately
+
+[tool.semantic_release.branches.main]
+match = "(master|main)"
+
+[tool.semantic_release.changelog]
+mode = "update"
+
 [dependency-groups]
 dev = [
     "hypothesis>=6.155.7",

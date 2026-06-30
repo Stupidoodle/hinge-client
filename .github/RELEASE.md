@@ -18,13 +18,21 @@ git log --all -p | grep -iE 'apk|dk8|qoh|decompil|jadx|smali|bumble|hinge-decomp
   (`git log --all -- reversal/ .env` should be empty).
 - The leak-canary (`tests/test_no_secrets.py`) must pass in CI.
 
-## Cut a release
-1. CI green on `master`.
-2. Update `CHANGELOG.md` (move Unreleased -> the new version).
-3. `git tag vX.Y.Z && git push origin vX.Y.Z`
-4. Publish a **GitHub Release** for the tag — `release.yml` builds and publishes to PyPI via
-   OIDC with PEP 740 attestations; the `pypi` environment gate requires a reviewer.
-5. Verify: `pip install hinge-client` in a clean venv, then `python -c "import hinge"`.
+## Cut a release (automated — python-semantic-release)
+Releases are driven by **conventional commits** — you do NOT tag by hand. Just push to `master`:
+- `fix:` -> patch (0.1.0 -> 0.1.1); `feat:` -> minor (0.1.0 -> 0.2.0);
+  `feat!:` / `BREAKING CHANGE:` -> minor while in 0.x (major once >= 1.0.0);
+- `docs:` / `chore:` / `ci:` / `test:` / `refactor:` / `style:` -> no release.
+
+On push to `master`, `.github/workflows/release.yml`:
+1. runs python-semantic-release: computes the next version, updates `CHANGELOG.md`, commits, tags
+   `vX.Y.Z`, and creates the GitHub Release;
+2. only if a release was made, builds and OIDC-publishes to PyPI with PEP 740 attestations, gated
+   behind the protected `pypi` environment (your one-click approval).
+
+- Preview the next version without changing anything:
+  `uvx python-semantic-release version --print`
+- Verify after publish: `uvx --from hinge-client python -c "import hinge"`.
 
 ## Incident response
 - Malicious/bad release: **yank** the version on PyPI; revoke the Trusted Publisher; rotate
